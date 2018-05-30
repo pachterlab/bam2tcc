@@ -1,0 +1,19 @@
+src7
+
+Combines thing.cpp and main.cpp [no longer true]
+
+Uses getopt()
+
+Splits functions up among several folders for the sake of readability. Also
+includes a lot more documentation.
+
+Tested with bowtie2 alignment for ecoli and compared against kallisto output.
+Few entries are exactly the same but are generally similar (i.e. if one class
+has a count of ~200 then both outputs indicate something around that).
+
+TODO: test with hisat2 for a few mouse reads, then test with entire genome.
+
+TODO: document
+
+TODO: optimize some things? specifically kallisto functions, since those weren't
+written with runtime speed in mind
