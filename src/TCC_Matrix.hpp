@@ -22,7 +22,11 @@ public:
     void inc_TCC(std::string TCC, int file_num);
     void dec_TCC(std::string TCC, int file_num);
     int write_to_file(std::string outname);
+    int write_to_file_sparse(std::string outname);
     int write_to_file_in_order(std::string outname,
+                               const std::vector<std::string> &order,
+                               const std::set<std::string> &ecs);
+    int write_to_file_in_order_sparse(std::string outname,
                                const std::vector<std::string> &order,
                                const std::set<std::string> &ecs);
 };

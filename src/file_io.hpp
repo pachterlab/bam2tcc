@@ -12,19 +12,30 @@
 #include "structs.hpp"
 #include "TCC_Matrix.hpp"
 
+#define NUM_GTF_ELT 9
+#define NUM_SAM_ELT 11
+#define ID_START "transcript_id \""
+#define ID_END "\""
 #define MAX_NOT_FOUND 25
 #define MIN_UPDATE 1000000
+#define USING_GTF 0
+
+std::string get_eq(const std::vector<std::vector<Exon>*> &exons, Read &read);
 
 void get_read(std::string info, Read &read);
 
 Sequence get_sequence(std::string info);
 
-int readGTFs(std::vector<std::string> files,
-             std::vector<std::string> &transcriptome,
-             std::vector<std::vector<Exon>*> &exons, int verbose);
+int readSAMs(std::vector<std::string> files,
+             std::vector<std::vector<Exon>*> &exons, TCC_Matrix &matrix,
+             std::string unmatched_outfile, int verbose, int nthreads);
 
 int readSAM(std::string file, int filenumber,
-            std::vector<std::vector<Exon>*> &exons, TCC_Matrix &matrix,
-            std::string unmatched_outfile, int verbose);
+        std::vector<std::vector<Exon>*> &exons, TCC_Matrix &matrix,
+       std::string unmatched_outfile, int verbose); 
+
+int readGTFs(std::vector<std::string> &files,
+             std::vector<std::string> &transcriptome,
+             std::vector<std::vector<Exon>*> &exons, int verbose);
 
 #endif

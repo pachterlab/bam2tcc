@@ -12,12 +12,6 @@
 
 using namespace std;
 
-#define NUM_GTF_ELT 9
-#define NUM_SAM_ELT 11
-
-#define ID_START "transcript_id \""
-#define ID_END "\""
-
 /**
  * @brief Returns a vector allocated on the heap containing all exons in map.
  *
@@ -279,11 +273,16 @@ Sequence get_sequence(string info) {
     }
     
     seq.seqname = fields[0];
+#if USING_GTF
     seq.feature = fields[2];
+#else
+    seq.feature = "exon";
+#endif
     
+#if USING_GTF
     seq.id = "";
     string id_start = ID_START;
-    string id_end = ID_END;
+    id_end = ID_END;
     if (id_end.size() == 1) {
         int start = fields[8].find(id_start) + id_start.length();
         int end = fields[8].find(id_end, start + 1);
@@ -291,6 +290,9 @@ Sequence get_sequence(string info) {
             seq.id = fields[8].substr(start, end - start);
         }
     }
+#else
+    seq.id = fields[8];
+#endif
     
     try {
         seq.start = stoi(fields[3]);
@@ -467,6 +469,25 @@ int readSAM(string file, int filenumber,
     }
     
     return unmatched;
+}
+
+int readSAMs(vector<string> files,
+             vector<vector<Exon>*> &exons, TCC_Matrix &matrix,
+             string unmatched_outfile, int verbose, int nthreads) {
+    
+    // There's probably no real need for 64-bit uints, but whatever.
+    uint64_t files_per_thread;
+    uint64_t lines_per_file;
+    
+    /* Figure out how to split up workload, e.g. whether we should just give
+     each thread some number of files, or if we can set multiple threads on a
+     single file. */
+    if (files.size() < nthreads) {
+        // For now, assume all files are about the same size.
+        lines_per_file = -1;
+    }
+
+    return -1;
 }
 
 /**
@@ -660,7 +681,7 @@ int readGTF(string file, unordered_map<uint64_t, uint64_t> index_map,
 /**
  *
  */
-int readGTFs(vector<string> files, vector<string> &transcriptome,
+int readGTFs(vector<string> &files, vector<string> &transcriptome,
              vector<vector<Exon>*> &exons, int verbose) {
     // 0-index the transcript counts. This will make count start at 0.
     uint64_t transcript_count = -1;
@@ -689,23 +710,5 @@ int readGTFs(vector<string> files, vector<string> &transcriptome,
     
     delete index_map;
     
-    return 0;
-    
-    /* DEBUG STATEMENT. TAKE OUT LATER. */
-    cout << "Outputing exons..." << endl;
-    for (int i = 0; i < exons.size(); ++i) {
-        cout << i << ": " << flush;
-        for (int j = 0; j < (*(exons[i])).size(); ++j) {
-            Exon e = (*(exons[i]))[j];
-            cout << "[[ start: " << e.start << " end: " << e.end;
-            cout << " transcripts: " << flush;
-            for (int k = 0; k < e.transcripts->size(); ++k) {
-                cout << (*e.transcripts)[k] << "  ";
-            }
-            cout << "  ]]  ";
-        }
-        cout << endl;
-    }
-    cout << endl;
     return 0;
 }

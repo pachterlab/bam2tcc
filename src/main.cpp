@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
     usage +=                              "<fa>. Takes a comma-separated ";
     usage +=                              "of file names\n";
     usage += "  -ec <ec>                   Output TCCs in the same order as in";
-    usage +=                              " output file ec.\n";
+    usage +=                              " input file ec.\n";
 
     /* Parse commandline arguments */
     vector<string> gtf_files; // annotated sequence files
@@ -220,7 +220,7 @@ int main(int argc, char **argv) {
     /* Write to output files */
     cout << "Writing to file... " << flush;
     if (kallisto_ec.size() == 0) {
-        err = matrix->write_to_file(out_name);
+        err = matrix->write_to_file_sparse(out_name);
     }
     else {
         vector<string> *kallisto_order = new vector<string>;
@@ -229,8 +229,8 @@ int main(int argc, char **argv) {
                                     *kallisto_ecs);
         // Only continue if previous function was successful.
         if (err != 1) {
-            err = matrix->write_to_file_in_order(out_name, *kallisto_order,
-                                                 *kallisto_ecs);;
+            err = matrix->write_to_file_in_order_sparse(out_name,
+                                            *kallisto_order, *kallisto_ecs);
         }
         delete kallisto_order;
         delete kallisto_ecs;

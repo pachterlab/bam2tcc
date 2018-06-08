@@ -97,6 +97,50 @@ int TCC_Matrix::write_to_file(string outname) {
 
 /**
  * Writes information in TCC_Matrix to files of names <outname>.ec and
+ * <outname>.tsv. Returns 1 if error occurs in opening files, otherwise 0.
+ * Specifically, writes everything in kallisto sparse format.
+ *
+ * TODO: Is there a more cache-friendly way of doing this, or even implementing
+ * this class in light of the fact that I have to output things this way?
+ *
+ * @param outname    Name of output files (without file extension).
+ * @return           1 if error occurs in opening files, otherwise 0.
+ */
+int TCC_Matrix::write_to_file_sparse(string outname) {
+    ofstream ec(outname + ".ec");
+    ofstream tsv(outname + ".tsv");
+    if (!ec.is_open() || !tsv.is_open()) {
+        return 1;
+    }
+
+    /* Write to ec file. */
+    int count = 0;
+    for (unordered_map<string, int>::iterator it = indices->begin();
+        it != indices->end(); ++it) {
+
+        ec << count << '\t' << it->first << endl;
+        ++count;
+    }
+    /* Write to tsv file. */
+    for (int i = 0; i < num_files; ++i) {
+        count = 0;
+        for (unordered_map<string, int>::iterator it = indices->begin();
+            it != indices->end(); ++it) {
+            if ((*matrix)[it->second][i] != 0) {
+                tsv << count << '\t' << i;
+                tsv << '\t' << (*matrix)[it->second][i] << endl;
+            }
+            ++count;
+        }
+    }
+
+    ec.close();
+    tsv.close();
+    return 0;
+}
+
+/**
+ * Writes information in TCC_Matrix to files of names <outname>.ec and
  * <outname>.tsv in the order specified by vector <order>. Returns 1 if error
  * occurs in opening files, otherwise 0.
  *
@@ -168,6 +212,85 @@ int TCC_Matrix::write_to_file_in_order(string outname,
         }
     }
     
+    ec.close();
+    tsv.close();
+    return 0;
+}
+
+
+/**
+ * Writes information in TCC_Matrix to files of names <outname>.ec and
+ * <outname>.tsv in the order specified by vector <order>. Returns 1 if error
+ * occurs in opening files, otherwise 0.
+ *
+ * @param outname       Name of output files (without file extension).
+ *
+ * @param order         Vector of strings describing the order in which to
+ * output equivalence classes.
+ *
+ * @param ecs           Set of the strings in order. Used to speed up runtime.
+ *
+ * @return              1 if error occurs in opening files, otherwise 0.
+ */
+int TCC_Matrix::write_to_file_in_order_sparse(string outname,
+                                       const vector<string> &order,
+                                       const set<string> &ecs) {
+    
+    /* Open the file and die if something goes wrong */
+    ofstream ec(outname + ".ec");
+    ofstream tsv(outname + ".tsv");
+    if (!ec.is_open() || !tsv.is_open()) {
+        return 1;
+    }
+
+    /* Output all kallisto TCCs to ec file. */
+    for (uint i = 0; i < order.size(); ++i) {
+        ec << i << '\t' << order[i] << endl;
+    }
+
+    /* Go through each equivalence class in vector order, use our map to locate
+     the TCC, and output it */
+    for (int i = 0; i < num_files; ++i) {
+        for (uint j = 0; j < order.size(); ++j) {
+            // Try to find equivalence class in TCC matrix.
+            unordered_map<string, int>::iterator elt = indices->find(order[j]);
+            // Equivalence class found and the count is not zero.
+            if (elt != indices->end() && (*matrix)[elt->second][i] != 0) {
+                tsv << j << '\t' << i << '\t' << (*matrix)[elt->second][i];
+                tsv << endl; 
+            }
+        }
+    }
+    
+    /* Write to file those classes that did not show up in kallisto */
+    uint64_t index = order.size();
+    unordered_map<string, int> *output_index_map
+                                            = new unordered_map<string, int>;
+    // Go through our matrix and see if any of our classes wasn't in kallisto's
+    // ec.
+    for (int i = 0; i < num_files; ++i) {
+        for (unordered_map<string, int>::iterator it = indices->begin();
+            it != indices->end(); ++it) {
+            set<string>::iterator elt = ecs.find(it->first);
+            // It wasn't in kallisto's file so it's not currently in our output.
+            if (elt == ecs.end() && (*matrix)[it->second][i] != 0) {
+                unordered_map<string, int>::iterator output_index =
+                                    output_index_map->find(it->first);
+                // If this TCC hasn't already been seen once, add it to our map
+                // of TCC -> output index.
+                if (output_index == output_index_map->end()) {
+                    ec << index << '\t' << it->first << endl;
+                    output_index_map->emplace(it->first, index);
+                    ++index;
+                }
+                tsv << output_index_map->at(it->first) << '\t' << i << '\t';
+                tsv << (*matrix)[it->second][i] << endl;
+            }
+        }
+    }
+   
+    delete output_index_map;
+    ec.close(); 
     tsv.close();
     return 0;
 }

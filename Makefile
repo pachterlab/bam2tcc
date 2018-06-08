@@ -17,6 +17,11 @@ main: $(OBJDIR)/main.o $(OBJS)
 debug: $(OBJDIR)/debug_util.o $(OBJDIR)/util.o
 	$(CXX) -o $(BINDIR)/debug $^
 
+# File not on github. Used to decide whether multithreading would be worth it.
+# (It is.)
+#timing: $(OBJDIR)/timing_tests.o $(OBJS)
+#	$(CXX) -o $(BINDIR)/timing $^
+
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp
 	$(CXX) $(CXXFLAGS) -o $@ -c $<
 
