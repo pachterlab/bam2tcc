@@ -8,6 +8,8 @@
 #ifndef structs_hpp
 #define structs_hpp
 
+#define PARSE_FAILED 0xFFFF  // Read failed if read.pos is this number.
+
 /**
  * Corresponds to a sequence in a GTF file. See GTF documentation for more
  * detail on each member.
@@ -24,9 +26,9 @@ struct Sequence {
  * Corresponds to an exon.
  */
 struct Exon {
-    uint start;                            /*< Start index of exon.
+    uint32_t start;                        /*< Start index of exon.
                                             1-indexed. */
-    uint end;                              /*< End index of exon. 1-indexed. */
+    uint32_t end;                          /*< End index of exon. 1-indexed. */
     std::string seqname;                   /*< Chromosome/scaffold of exon. */
     std::vector<uint64_t> *transcripts;    /*< All transcripts that contain this
                                             exon. Likely to contain multiple
@@ -84,8 +86,8 @@ struct Exon {
  */
 struct Read {
     int flag;           /*< Flag indicating some special status of entry. */
-    uint pos;           /*< Start index of entry. 1-indexed. */
-    uint end;           /*< End index of entry. Not necessarily equal to
+    uint32_t pos;           /*< Start index of entry. 1-indexed. */
+    uint32_t end;           /*< End index of entry. Not necessarily equal to
                          pos + (read length), since base pairs may have been
                          deleted, spliced, etc. */
     std::string qname;  /*< Chromosome or scaffold of entry. */

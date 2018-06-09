@@ -12,7 +12,7 @@ OBJS = $(OBJDIR)/TCC_Matrix.o $(OBJDIR)/file_io.o $(OBJDIR)/kallisto_util.o $(OB
 all: main
 
 main: $(OBJDIR)/main.o $(OBJS) 
-	$(CXX) -o $(BINDIR)/$(EXENAME) $^
+	$(CXX) -o $(BINDIR)/$(EXENAME) $^ -pthread
 
 debug: $(OBJDIR)/debug_util.o $(OBJDIR)/util.o
 	$(CXX) -o $(BINDIR)/debug $^

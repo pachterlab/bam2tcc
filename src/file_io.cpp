@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <algorithm>
+#include <thread>
 
 #include "file_io.hpp"
 #include "util.hpp"
@@ -226,7 +227,7 @@ int get_read_length(const Read &r) {
  * fields pos and end cannot be parsed.
  */
 void get_read(string info, Read &read) {
-    read.pos = 0;
+    read.pos =  PARSE_FAILED;
     
     vector<string> fields = parse_tsv(info);
     if (fields.size() < NUM_SAM_ELT) {
@@ -245,7 +246,7 @@ void get_read(string info, Read &read) {
         read.end = read.pos + get_read_length(read) - 1;
     }
     catch (invalid_argument &e) {
-        read.pos = 0;
+        read.pos = PARSE_FAILED;
     }
 }
 
@@ -321,7 +322,7 @@ Sequence get_sequence(string info) {
  *
  * @return -1 if file fails to open, else 0
  */
-int readSAM(string file, int filenumber,
+int readSAM(string file, int filenumber, int start, int end,
             vector<vector<Exon>*> &exons, TCC_Matrix &matrix,
             string unmatched_outfile, int verbose) {
     
@@ -356,6 +357,9 @@ int readSAM(string file, int filenumber,
     if (lines == -1) {
         return -1;
     }
+
+    // If end == 0, we want to read the whole file. Change end appropriately.
+    end = lines;
     
     /* Open SAM file a file for unmatched output if the parameter for the name
      of this file is not an empty string. Return -1 if action fails */
@@ -364,7 +368,8 @@ int readSAM(string file, int filenumber,
         return -1;
     }
     
-    cout << "  Reading " << file << "..." << endl;
+    cout << "  Reading lines " << start << ".." << end << " of ";
+    cout << file << "..." << endl;
     /* Attempt to open output file for unmatched reads if outname of this file
      is nonempty. Print warning message if action fails */
     ofstream fout;
@@ -374,9 +379,14 @@ int readSAM(string file, int filenumber,
             cerr << "    WARNING: unable to open " << unmatched_outfile << endl;
         }
     }
+
+    /* Go to the starting line of this file. */
+    while (line_count < start && getline(f, upper_inp)) {
+        ++line_count;
+    }
     
     /* Start looping through each line of the file */
-    while(getline(f, upper_inp)) {
+    while(line_count < end && getline(f, upper_inp)) {
         /* Update line count and print update message */
         ++line_count;
         if (verbose
@@ -395,11 +405,12 @@ int readSAM(string file, int filenumber,
         
         /* Look at values and update TCC matrix and various counters */
         
+        // TODO: apparently I'm failing to read the flag?
         // According to SAM specifications, this means it was not aligned.
         if (read.flag == 4) {
             continue;
         }
-        if (read.pos == 0) {
+        if (read.pos == PARSE_FAILED) {
             if (verbose) {
                 cerr << "    WARNING: unable to parse line ";
                 cerr << line_count << ". Make sure this line has 11 tab-";
@@ -471,23 +482,50 @@ int readSAM(string file, int filenumber,
     return unmatched;
 }
 
-int readSAMs(vector<string> files,
+int readSAMs(vector<string> &files,
              vector<vector<Exon>*> &exons, TCC_Matrix &matrix,
              string unmatched_outfile, int verbose, int nthreads) {
-    
-    // There's probably no real need for 64-bit uints, but whatever.
-    uint64_t files_per_thread;
-    uint64_t lines_per_file;
+   
+    // Array of all our possible threads. 
+    thread **threads = new thread*[nthreads];
+    for (int i = 0; i < nthreads; ++i) {
+        threads[i] = NULL;
+    }
+
+    // TODO: currently don't use readSAM return--don't know if files
+    // successfully open! Though we definitely expect it since we test-open them
+    // in main. BUT figure out how async works and use it!
     
     /* Figure out how to split up workload, e.g. whether we should just give
      each thread some number of files, or if we can set multiple threads on a
      single file. */
-    if (files.size() < nthreads) {
-        // For now, assume all files are about the same size.
-        lines_per_file = -1;
+    // For now, assume all files are about the same size.
+    if (files.size() <= nthreads) {
+        int perfile = nthreads / files.size();
+        cout << "  Using " << perfile * files.size() << " threads...";
+        for (int i = 0; i < files.size(); ++i) {
+            int lines = get_line_count(files[i]);
+            for (int j = 0; j < perfile - 1; ++j) {
+                threads[i * perfile + j] = new thread(&readSAM,
+                        files[i], i, (j == 0)? 0 : lines / j, lines / (j + 1),
+                        ref(exons), ref(matrix), unmatched_outfile, verbose);
+            }
+            threads[i * perfile + perfile - 1] = new thread(&readSAM,
+                    files[i], i, (perfile == 1) ? 0 : lines / (perfile - 1), 0,
+                    ref(exons), ref(matrix), unmatched_outfile, verbose);
+        }
+    } else {
     }
 
-    return -1;
+    for (int i = 0; i < nthreads; ++i) {
+        if (threads[i] != NULL) {
+            threads[i]->join();
+            delete threads[i];
+        }
+    }
+    delete[] threads;
+
+    return 1;
 }
 
 /**

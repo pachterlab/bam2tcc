@@ -4,18 +4,21 @@
 #include <unordered_map>
 #include <set>
 #include <vector>
+#include "semaphore.hpp"
 
 /**
  * Class representing a matrix of TCC counts.
  */
 class TCC_Matrix {
 private:
-    /* number of SAM files data int this matrix represents */
+    /* Number of SAM files data int this matrix represents */
     int num_files;
-    /* matrix holding data. each int * is an array of size num_files */
+    /* Matrix holding data. each int * is an array of size num_files */
     std::vector<int*> *matrix;
-    /* maps equivalence class in string form to index of EC in matrix */
+    /* Maps equivalence class in string form to index of EC in matrix */
     std::unordered_map<std::string, int> *indices;
+    /* Semaphore to control access to this matrix. */
+    Semaphore *sem;
 public:
     TCC_Matrix(int num_files);
     ~TCC_Matrix();

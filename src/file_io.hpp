@@ -26,11 +26,11 @@ void get_read(std::string info, Read &read);
 
 Sequence get_sequence(std::string info);
 
-int readSAMs(std::vector<std::string> files,
+int readSAMs(std::vector<std::string> &files,
              std::vector<std::vector<Exon>*> &exons, TCC_Matrix &matrix,
              std::string unmatched_outfile, int verbose, int nthreads);
 
-int readSAM(std::string file, int filenumber,
+int readSAM(std::string file, int filenumber, int start, int end,
         std::vector<std::vector<Exon>*> &exons, TCC_Matrix &matrix,
        std::string unmatched_outfile, int verbose); 
 

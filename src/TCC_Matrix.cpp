@@ -12,6 +12,7 @@ TCC_Matrix::TCC_Matrix(int file_count) {
     num_files = file_count;
     matrix = new vector<int*>;
     indices = new unordered_map<string, int>;
+    sem = new Semaphore;
 }
 
 /**
@@ -23,6 +24,7 @@ TCC_Matrix::~TCC_Matrix() {
     }
     delete matrix;
     delete indices;
+    delete sem;
 }
 
 /**
@@ -32,6 +34,7 @@ TCC_Matrix::~TCC_Matrix() {
  * @param file_num    Index of SAM file (should be less than num_files).
  */
 void TCC_Matrix::inc_TCC(string TCC, int file_num) {
+    sem->dec();
     try {
         ++(*matrix)[indices->at(TCC)][file_num];
     }
@@ -44,6 +47,7 @@ void TCC_Matrix::inc_TCC(string TCC, int file_num) {
         matrix->push_back(arr);
         ++(*matrix)[matrix->size() - 1][file_num];
     }
+    sem->inc();
 }
 
 /**
@@ -58,7 +62,9 @@ void TCC_Matrix::inc_TCC(string TCC, int file_num) {
  * @param file_num    Index of SAM file (should be less than num_files).
  */
 void TCC_Matrix::dec_TCC(string TCC, int file_num) {
+    sem->dec();
     --(*matrix)[indices->at(TCC)][file_num];
+    sem->inc();
 }
 
 /**
