@@ -11,6 +11,7 @@
 
 #include "structs.hpp"
 #include "TCC_Matrix.hpp"
+#include "semaphore.hpp"
 
 #define NUM_GTF_ELT 9
 #define NUM_SAM_ELT 11
@@ -29,10 +30,6 @@ Sequence get_sequence(std::string info);
 int readSAMs(std::vector<std::string> &files,
              std::vector<std::vector<Exon>*> &exons, TCC_Matrix &matrix,
              std::string unmatched_outfile, int verbose, int nthreads);
-
-int readSAM(std::string file, int filenumber, int start, int end,
-        std::vector<std::vector<Exon>*> &exons, TCC_Matrix &matrix,
-       std::string unmatched_outfile, int verbose); 
 
 int readGTFs(std::vector<std::string> &files,
              std::vector<std::string> &transcriptome,

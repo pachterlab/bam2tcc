@@ -143,4 +143,3 @@ The sparse matrix looks like this:
 - [ ] Use threads more efficiently
 - [ ] Use SeqAn
 - [ ] Better documentation! It's, like, several months out of date.
-- [ ] Figure out why it's printing warning messages when the read didn't align.

@@ -300,7 +300,7 @@ int main(int argc, char **argv) {
     }
     cout << s << '\t';
 
-    cout << "Unmatched reads: currently unavailable" << endl; 
+    cout << "Unmatched reads: " << unmatched << endl; 
 
     return 0;
 }

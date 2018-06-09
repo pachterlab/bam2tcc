@@ -5,11 +5,12 @@
 
 #include <iostream>
 #include <algorithm>
-#include <thread>
+#include <future>
 
 #include "file_io.hpp"
 #include "util.hpp"
 #include "kallisto_util.hpp"
+#include "semaphore.hpp"
 
 using namespace std;
 
@@ -235,9 +236,6 @@ void get_read(string info, Read &read) {
     }
     
     read.cigar = fields[5];
-    if (read.cigar.compare("*") == 0) {
-        return;
-    }
     read.qname = fields[0];
     read.rname = fields[2];
     try {
@@ -322,63 +320,37 @@ Sequence get_sequence(string info) {
  *
  * @return -1 if file fails to open, else 0
  */
-int readSAM(string file, int filenumber, int start, int end,
+int readSAM(string file, int filenumber, int start, int end, int thread,
             vector<vector<Exon>*> &exons, TCC_Matrix &matrix,
-            string unmatched_outfile, int verbose) {
+            string unmatched_outfile, int verbose, Semaphore &sem) {
     
-    // Holds one line of the file. For use with getline. upper_inp contains
-    // uppercase letters, whereas inp is entirely lowercase.
-    string inp, upper_inp;
-    
-    // Equivalence class of a read. Must be persistent across loops in case
-    // we have a multi-mapping read represented as two SAM file entries.
-    string eq;
-    
-    // Name of previous read. If a multi-mapping read is represented as two
-    // entries, we need to know so we can combine the eq of all entries for this
-    // read.
-    string prev_qname;
-    
-    // A read struct on the heap. Constantly rewritten with new info for read.
+    string inp, upper_inp, prev_inp, prev_qname, eq;
     Read read;
     
-    // Indicates the number of unmatched reads in this file.
     uint64_t unmatched = 0;
-    
-    // Line number of line being read. For use with error message if a line
-    // cannot be parsed.
+    vector<string> *unmatched_lines = new vector<string>;
+
     uint64_t line_count = 0;
-    
-    // Total line count of file. If verbose, prints out update messages when
-    // another 10% of the file is read.
-    uint64_t lines = get_line_count(file);
-    // Indicates 10% of the file.
+    if (end == 0) {
+        end = get_line_count(file);
+    }
+    uint64_t lines = end - start;
     uint64_t ten_percent = lines / 10;
     if (lines == -1) {
         return -1;
     }
-
-    // If end == 0, we want to read the whole file. Change end appropriately.
-    end = lines;
-    
+   
     /* Open SAM file a file for unmatched output if the parameter for the name
      of this file is not an empty string. Return -1 if action fails */
     ifstream f(file);
     if (!f.is_open()) {
         return -1;
     }
-    
-    cout << "  Reading lines " << start << ".." << end << " of ";
-    cout << file << "..." << endl;
-    /* Attempt to open output file for unmatched reads if outname of this file
-     is nonempty. Print warning message if action fails */
-    ofstream fout;
-    if (unmatched_outfile.size() != 0) {
-        fout.open(unmatched_outfile, fstream::app);
-        if (!fout.is_open()) {
-            cerr << "    WARNING: unable to open " << unmatched_outfile << endl;
-        }
-    }
+   
+    sem.dec();
+    cout << "  " << thread << ": reading lines " << start << ".." << end;
+    cout << " of " << file << "..." << endl;
+    sem.inc();
 
     /* Go to the starting line of this file. */
     while (line_count < start && getline(f, upper_inp)) {
@@ -389,9 +361,12 @@ int readSAM(string file, int filenumber, int start, int end,
     while(line_count < end && getline(f, upper_inp)) {
         /* Update line count and print update message */
         ++line_count;
-        if (verbose
-            && line_count > MIN_UPDATE && line_count % ten_percent == 0) {
-            cout << "    " << line_count / ten_percent << "0% done" << endl;
+        if (verbose && line_count > MIN_UPDATE && thread == 0
+                && (line_count - start) % ten_percent == 0) {        
+            sem.dec();
+            cout << "    ";
+            cout << (line_count - start) / ten_percent << "0% done" << endl;
+            sem.inc();
         }
         
         /* Skip header and blank lines */
@@ -403,42 +378,31 @@ int readSAM(string file, int filenumber, int start, int end,
         inp = lower(upper_inp);
         get_read(inp, read);
         
-        /* Look at values and update TCC matrix and various counters */
-        
-        // TODO: apparently I'm failing to read the flag?
-        // According to SAM specifications, this means it was not aligned.
+        /* Make sure read is valid. If not, skip it. */
         if (read.flag == 4) {
+            // According to SAM specifications, this means it was not aligned.
             continue;
         }
         if (read.pos == PARSE_FAILED) {
             if (verbose) {
+                sem.dec();
                 cerr << "    WARNING: unable to parse line ";
                 cerr << line_count << ". Make sure this line has 11 tab-";
                 cerr << "separated fields, valid int values, and a";
                 cerr << " CIGAR string" << endl;
+                sem.inc();
             }
             continue;
         }
         
-        // Have we seen this read before? If so, undo our last TCC entry
-        // increment or unmatched, and add the transcripts this entry mapped to
-        // to the equivalence class.
+        /* Get equivalence class. How we do it depends on whether we've seen
+           this read before. */
         if (prev_qname.compare(read.qname) == 0) {
-            // Didn't match any transcripts last time, so we incremented
-            // unmatched. Now, undo that.
+            // Check whether this is a read that mapped to multiple locations.
             if (eq.size() == 0) {
-                --unmatched;
                 eq = get_eq(exons, read);
-            }
-            // Matched transcripts last time, so we incremented the relevant
-            // matrix entry. Now, undo that.
-            else {
+            } else {
                 matrix.dec_TCC(eq, filenumber);
-                // Get the transcripts this entry mapped to, and add it to the
-                // equivalence class string. We'll also need to sort the entire
-                // string, since transcript indices in the previous equivalence
-                // class are not guaranteed to be strictly less than those of
-                // this new equivalence class.
                 string temp = get_eq(exons, read);
                 if (temp.size() != 0) {
                     eq += ',' + temp;
@@ -452,32 +416,47 @@ int readSAM(string file, int filenumber, int start, int end,
                 eq = eq.substr(0, eq.size() - 1); // Get rid of last comma.
             }
         }
-        // This is a new read. We just want to get the equivalence class
-        // and update prev_qname.
         else {
+            // Update unmatched if the last read didn't align anywhere.
+            if (eq.size() == 0) {
+                ++unmatched;
+                unmatched_lines->push_back(prev_inp);
+            }
+
+            // This is a new read. We just want to get the equivalence class
+            // and update prev_qname.
             eq = get_eq(exons, read);
             prev_qname = read.qname;
         }
         
-        // Did the entry match any transcripts? If not, increment unmatched and
-        // add it to the unmatched SAM file if it's open.
-        if (eq.size() == 0) {
-            ++unmatched;
-            if (fout.is_open()) {
-                fout << upper_inp << endl; // TODO: change flag if necessary
-            }
-        }
-        // It matched some transcripts. Increment the relevant matrix entry.
-        else {
+        /* And finally, add it to the matrix! */
+        if (eq.size() != 0) {
             matrix.inc_TCC(eq, filenumber);
         }
+        prev_inp = upper_inp;
     }
-    
+
+
+    /* Attempt to open output file for unmatched reads if outname of this file
+     is nonempty. Print warning message if action fails */
+    ofstream fout;
+    if (unmatched_outfile.size() != 0) {
+        fout.open(unmatched_outfile, fstream::app);
+        sem.dec();
+        if (!fout.is_open()) {
+            cerr << "    WARNING: unable to open " << unmatched_outfile << endl;
+        }
+        else{
+            for (int i = 0; i < unmatched_lines->size(); ++i) {
+                fout << (*unmatched_lines)[i] << endl;
+            }
+            fout.close();
+        }
+        sem.inc();
+    }
+
     /* Clean-up and return */
     f.close();
-    if (fout.is_open()) {
-        fout.close();
-    }
     
     return unmatched;
 }
@@ -486,46 +465,57 @@ int readSAMs(vector<string> &files,
              vector<vector<Exon>*> &exons, TCC_Matrix &matrix,
              string unmatched_outfile, int verbose, int nthreads) {
    
-    // Array of all our possible threads. 
-    thread **threads = new thread*[nthreads];
-    for (int i = 0; i < nthreads; ++i) {
-        threads[i] = NULL;
-    }
+    // Vector of all our possible threads. 
+    vector<future<int>> unmatched;
 
-    // TODO: currently don't use readSAM return--don't know if files
-    // successfully open! Though we definitely expect it since we test-open them
-    // in main. BUT figure out how async works and use it!
-    
+    // Used to coordinate stdout, stderr, and shared file output.
+    Semaphore sem;
+
     /* Figure out how to split up workload, e.g. whether we should just give
      each thread some number of files, or if we can set multiple threads on a
      single file. */
     // For now, assume all files are about the same size.
     if (files.size() <= nthreads) {
         int perfile = nthreads / files.size();
-        cout << "  Using " << perfile * files.size() << " threads...";
         for (int i = 0; i < files.size(); ++i) {
             int lines = get_line_count(files[i]);
             for (int j = 0; j < perfile - 1; ++j) {
-                threads[i * perfile + j] = new thread(&readSAM,
-                        files[i], i, (j == 0)? 0 : lines / j, lines / (j + 1),
-                        ref(exons), ref(matrix), unmatched_outfile, verbose);
+                unmatched.push_back(async(&readSAM, files[i], i,
+                        lines / perfile * j, lines / perfile * (j + 1),
+                        i * perfile + j,
+                        ref(exons), ref(matrix), unmatched_outfile, verbose,
+                        ref(sem)));
             }
-            threads[i * perfile + perfile - 1] = new thread(&readSAM,
-                    files[i], i, (perfile == 1) ? 0 : lines / (perfile - 1), 0,
-                    ref(exons), ref(matrix), unmatched_outfile, verbose);
+            // Do the last thread separately becuse I'm paranoid that I'll get
+            // an off-by-one error.
+            unmatched.push_back(async(&readSAM,
+                    files[i], i,
+                    lines / perfile * (perfile - 1), 0,
+                    i * perfile + perfile - 1,
+                    ref(exons), ref(matrix), unmatched_outfile, verbose,
+                    ref(sem)));
         }
     } else {
     }
 
-    for (int i = 0; i < nthreads; ++i) {
-        if (threads[i] != NULL) {
-            threads[i]->join();
-            delete threads[i];
+    int total_unmatched = 0;
+    for (int i = 0; i < unmatched.size(); ++i) {
+        if (unmatched[i].valid()) {
+            unmatched[i].wait();
+        }
+        else {
+            cout << "invalid state?" << endl;
+        }
+        int temp = unmatched[i].get();
+        if (temp == -1) {
+            cerr << "  WARNING: thread " << i << " failed" << endl;
+        }
+        else {
+            total_unmatched += temp;
         }
     }
-    delete[] threads;
 
-    return 1;
+    return total_unmatched;
 }
 
 /**
