@@ -84,7 +84,8 @@ int main(int argc, char **argv) {
     // use getopt_long to parse arguments
     int opt_index = 0;
     while(1) {
-        int c = getopt_long(argc, argv, "qu:g:S:o:t:e:", long_opts, &opt_index);
+        int c = getopt_long(argc, argv,
+                "p:qu:g:S:o:t:e:f", long_opts, &opt_index);
         if (c == -1) { break; }
         switch (c) {
             case 'p':   threads = atoi(optarg);

@@ -43,6 +43,36 @@ int no_zeros(string inname, string outname) {
     return 0;
 }
 
+/**
+ * This, uh, turns the kallisto single-end output full matrix into a sparse
+ * matrix. Only works when there's only one column. lol
+ */
+int moar_zeroes(string infile, string outfile) {
+    ifstream in(infile);
+    if (!in.is_open()) {
+        cerr << infile << "  failed to open" << endl;
+        return 1;
+    }
+    ofstream out(outfile);
+    if (!out.is_open()) {
+        cerr << outfile << " failed to open" << endl;
+        in.close();
+        return 1;
+    }
+
+    string inp;
+    while (getline(in, inp)) {
+        vector<string> tsv = parse_tsv(inp);
+        if (stoi(tsv[1]) != 0) {
+            out << tsv[0] << "\t0\t" << tsv[1] << endl;
+        }
+    }
+
+    in.close();
+    out.close();
+    return 0;
+}
+
 int count(string inname) {
     ifstream in(inname + ".tsv");
     if (!in.is_open()) {
@@ -350,6 +380,7 @@ int main(int argc, char **argv) {
         cout << "find:         f tofind transcript_num infile" << endl;
         cout << "ids:          k infile outfile transcriptome" << endl;
         cout << "get reads     r insam ref_fastq outfastq" << endl;
+        cout << "sparse        x in_tsv out_tsv" << endl;
         return 1;
     }
     char opt = argv[1][1];
@@ -371,6 +402,8 @@ int main(int argc, char **argv) {
         case 'k':   err = transcript_ids(argv[2], argv[3], argv[4]);
                     break;
         case 'r':   err = fill_fastq(argv[2], argv[3], argv[4]);
+                    break;
+        case 'x':   err = moar_zeroes(argv[2], argv[3]);
                     break;
     }
     
