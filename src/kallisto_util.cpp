@@ -14,7 +14,8 @@
 
 using namespace std;
 
-#define TRANSCRIPT_NAME_END_CHAR '.'
+#define TRANSCRIPT_NAME_START_CHAR ' '
+#define TRANSCRIPT_NAME_END_CHAR ' '
 
 
 /**
@@ -129,9 +130,9 @@ int get_id_to_kallisto_index_help(string file,
         ++transcript_count;
         
         inp = lower(inp);
-        uint first_space = inp.find(TRANSCRIPT_NAME_END_CHAR);
-        // Exclude the first character ('>') and the END CHAR.
-        map.emplace(inp.substr(1, first_space - 1), transcript_count);
+        int start = inp.find(TRANSCRIPT_NAME_START_CHAR) + 1;
+        int end = inp.find(TRANSCRIPT_NAME_END_CHAR, start);
+        map.emplace(inp.substr(start, end - start), transcript_count);
     }
     
     f.close();
@@ -197,10 +198,11 @@ int get_index_to_kallisto_index(const vector<string> &gtf,
                                 const vector<string> &transcriptome,
                                 unordered_map<uint64_t, uint64_t> &map,
                                 int verbose) {
-    
-    // We want to use maps allocated on the heap since we might have an awful
-    // lot of transcripts.
-    
+   
+    if (verbose) {
+        cout << "  Reading transcriptome..." << endl;
+    }
+
     // Map from index to transcript_id, which should match...
     unordered_map<uint64_t, string> *m1 = new unordered_map<uint64_t, string>;
     int err = get_index_to_seqid(gtf, *m1);
@@ -223,11 +225,11 @@ int get_index_to_kallisto_index(const vector<string> &gtf,
     
     if (verbose) {
         if (m1->size() > m2->size()) {
-            cerr << "  WARNING: GTF(s) contain more entries than the ";
+            cerr << "    WARNING: GTF(s) contain more entries than the ";
             cerr << "transcriptome file(s)!" << endl;
         }
         else if (m1->size() < m2->size()) {
-            cerr << "  WARNING: Transcriptome file(s) contain more entries ";
+            cerr << "    WARNING: Transcriptome file(s) contain more entries ";
             cerr << "than the GTF files(s)!" << endl;
         }
     }
@@ -244,15 +246,11 @@ int get_index_to_kallisto_index(const vector<string> &gtf,
     for (unordered_map<uint64_t, string>::iterator it = m1->begin();
          it != m1->end(); ++it) {
         
-        // Try to access corresponding kallisto index. There may not be a match!
-        // But this isn't case-sensitive, since all strings are lowercase-only.
-        try {
-            map.emplace(it->first, m2->at(it->second));
-        }
-        // There's no match in transcriptome files. Add it to the vector of
-        // unmatched indices.
-        catch (out_of_range &err) {
+        if (m2->find(it->second) == m2->end()) {
             unfound->push_back(it->first);
+        }
+        else {    
+            map.emplace(it->first, m2->at(it->second));
         }
     }
     
@@ -270,6 +268,10 @@ int get_index_to_kallisto_index(const vector<string> &gtf,
     delete m2;
     delete unfound;
     
+    if (verbose) {
+        cout << "  done" << endl;
+    }
+
     return 0;
 }
 

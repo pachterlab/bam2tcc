@@ -1,17 +1,17 @@
 #include "TCC_Matrix.hpp"
 #include <fstream>
+#include "util.hpp"
 using namespace std;
 
 /**
- * Constructer for new TCC_Matrix holding information for <file_count> number of
+ * Constructer for new TCC_Matrix holding information for `file_count` number of
  * SAM files.
  * 
  * @param num_files    number of SAM files
  */
 TCC_Matrix::TCC_Matrix(int file_count) {
     num_files = file_count;
-    matrix = new vector<int*>;
-    indices = new unordered_map<string, int>;
+    matrix = new unordered_map<string, int*>;
     sem = new Semaphore;
 }
 
@@ -19,34 +19,31 @@ TCC_Matrix::TCC_Matrix(int file_count) {
  * Deconstructor for TCC_Matrix.
  */
 TCC_Matrix::~TCC_Matrix() {
-    for (uint i = 0; i < matrix->size(); ++i) {
-        delete[] (*matrix)[i];
+    for (unordered_map<string, int*>::iterator it = matrix->begin();
+            it != matrix->end(); ++it) {
+        delete[] it->second;
     }
     delete matrix;
-    delete indices;
     delete sem;
 }
 
 /**
- * Increments count for TCC in file number <file_num>.
+ * Increments count for TCC in file number `file_num`.
  *
  * @param TCC         String representation of equivalence class of read.
  * @param file_num    Index of SAM file (should be less than num_files).
  */
 void TCC_Matrix::inc_TCC(string TCC, int file_num) {
     sem->dec();
-    try {
-        ++(*matrix)[indices->at(TCC)][file_num];
-    }
-    catch(out_of_range &e) {
-        indices->emplace(TCC, matrix->size());
+    unordered_map<string, int*>::iterator it = matrix->find(TCC);
+    if (it == matrix->end()) {
         int *arr = new int[num_files];
         for (int i = 0; i < num_files; ++i) {
             arr[i] = 0;
         }
-        matrix->push_back(arr);
-        ++(*matrix)[matrix->size() - 1][file_num];
+        matrix->emplace(TCC, arr);
     }
+    ++(*matrix)[TCC][file_num];
     sem->inc();
 }
 
@@ -63,7 +60,7 @@ void TCC_Matrix::inc_TCC(string TCC, int file_num) {
  */
 void TCC_Matrix::dec_TCC(string TCC, int file_num) {
     sem->dec();
-    --(*matrix)[indices->at(TCC)][file_num];
+    --(*matrix)[TCC][file_num];
     sem->inc();
 }
 
@@ -74,7 +71,7 @@ void TCC_Matrix::dec_TCC(string TCC, int file_num) {
  * @param outname    Name of output files (without file extension).
  * @return           1 if error occurs in opening files, otherwise 0.
  */
-int TCC_Matrix::write_to_file(string outname) {
+int TCC_Matrix::write_to_file(string outname, int num_transcripts) {
     ofstream ec(outname + ".ec");
     ofstream tsv(outname + ".tsv");
     if (!ec.is_open() || !tsv.is_open()) {
@@ -82,17 +79,42 @@ int TCC_Matrix::write_to_file(string outname) {
     }
 
     int count = 0;
-    for (unordered_map<string, int>::iterator it = indices->begin();
-        it != indices->end(); ++it) {
+    while (count < num_transcripts) {
+        ec << count << '\t' << count << endl;
+        
+        tsv << count;
+        unordered_map<string, int*>::iterator it
+            = matrix->find(to_string(count));
+        if (it != matrix->end()) {
+            for (int j = 0; j < num_files; ++j) {
+                tsv << '\t' << it->second[j];
+            }
+        } else {
+            for (int j = 0; j < num_files; ++j) {
+                tsv << '\t' << 0;
+            }
+        }
+        tsv << endl;
+
+        ++count;
+    }
+
+    for (unordered_map<string, int*>::iterator it = matrix->begin();
+        it != matrix->end(); ++it) {
+        
+        if (it->first.find(',') == string::npos
+                && stoi(it->first) < num_transcripts) {
+            continue;
+        }
 
         ec << count << '\t' << it->first << endl;
 
         tsv << count;
-        int *curr_TCC = (*matrix)[it->second];
         for (int i = 0; i < num_files; ++i) {
-            tsv << '\t' << curr_TCC[i];
+            tsv << '\t' << it->second[i];
         }
         tsv << endl;
+
         ++count;
     }
 
@@ -121,8 +143,8 @@ int TCC_Matrix::write_to_file_sparse(string outname) {
 
     /* Write to ec file. */
     int count = 0;
-    for (unordered_map<string, int>::iterator it = indices->begin();
-        it != indices->end(); ++it) {
+    for (unordered_map<string, int*>::iterator it = matrix->begin();
+        it != matrix->end(); ++it) {
 
         ec << count << '\t' << it->first << endl;
         ++count;
@@ -130,11 +152,11 @@ int TCC_Matrix::write_to_file_sparse(string outname) {
     /* Write to tsv file. */
     for (int i = 0; i < num_files; ++i) {
         count = 0;
-        for (unordered_map<string, int>::iterator it = indices->begin();
-            it != indices->end(); ++it) {
-            if ((*matrix)[it->second][i] != 0) {
+        for (unordered_map<string, int*>::iterator it = matrix->begin();
+            it != matrix->end(); ++it) {
+            if (it->second[i] != 0) {
                 tsv << count << '\t' << i;
-                tsv << '\t' << (*matrix)[it->second][i] << endl;
+                tsv << '\t' << it->second[i] << endl;
             }
             ++count;
         }
@@ -176,13 +198,12 @@ int TCC_Matrix::write_to_file_in_order(string outname,
         ec << i << '\t' << order[i] << endl;
         
         // Try to find equivalence class in TCC matrix.
-        unordered_map<string, int>::iterator elt = indices->find(order[i]);
+        unordered_map<string, int*>::iterator elt = matrix->find(order[i]);
         tsv << i;
         // Equivalence class found. Add it to the vector of unfound classes.
-        if (elt != indices->end()) {
-            int *curr_TCC = (*matrix)[elt->second];
+        if (elt != matrix->end()) {
             for (int j = 0; j < num_files; ++j) {
-                tsv << '\t' << curr_TCC[j];
+                tsv << '\t' << elt->second[j];
             }
         }
         // Otherwise, just output 0s.
@@ -199,18 +220,18 @@ int TCC_Matrix::write_to_file_in_order(string outname,
     uint64_t index = order.size();
     // Go through our matrix and see if any of our classes wasn't in kallisto's
     // ec.
-    for (unordered_map<string, int>::iterator it = indices->begin();
-         it != indices->end(); ++it) {
-        
+    for (unordered_map<string, int*>::iterator it = matrix->begin();
+         it != matrix->end(); ++it) {
+       
+        /* TODO: fix this so you don't use a set. This is dumb. */
         set<string>::iterator elt = ecs.find(it->first);
         // It wasn't in kallisto's file, so it's not currently in our output.
         if (elt == ecs.end()) {
             ec << index << '\t' << it->first << endl;
             
             tsv << index;
-            int *curr_TCC = (*matrix)[it->second];
             for (int j = 0; j < num_files; ++j) {
-                tsv << '\t' << curr_TCC[j];
+                tsv << '\t' << it->second[j];
             }
             tsv << endl;
             
@@ -259,10 +280,10 @@ int TCC_Matrix::write_to_file_in_order_sparse(string outname,
     for (int i = 0; i < num_files; ++i) {
         for (uint j = 0; j < order.size(); ++j) {
             // Try to find equivalence class in TCC matrix.
-            unordered_map<string, int>::iterator elt = indices->find(order[j]);
+            unordered_map<string, int*>::iterator elt = matrix->find(order[j]);
             // Equivalence class found and the count is not zero.
-            if (elt != indices->end() && (*matrix)[elt->second][i] != 0) {
-                tsv << j << '\t' << i << '\t' << (*matrix)[elt->second][i];
+            if (elt != matrix->end() && elt->second[i] != 0) {
+                tsv << j << '\t' << i << '\t' << elt->second[i];
                 tsv << endl; 
             }
         }
@@ -272,14 +293,14 @@ int TCC_Matrix::write_to_file_in_order_sparse(string outname,
     uint64_t index = order.size();
     unordered_map<string, int> *output_index_map
                                             = new unordered_map<string, int>;
-    // Go through our matrix and see if any of our classes wasn't in kallisto's
+    // Go through our matrix and see if any of our classes weren't in kallisto's
     // ec.
     for (int i = 0; i < num_files; ++i) {
-        for (unordered_map<string, int>::iterator it = indices->begin();
-            it != indices->end(); ++it) {
+        for (unordered_map<string, int*>::iterator it = matrix->begin();
+                it != matrix->end(); ++it) {
             set<string>::iterator elt = ecs.find(it->first);
             // It wasn't in kallisto's file so it's not currently in our output.
-            if (elt == ecs.end() && (*matrix)[it->second][i] != 0) {
+            if (elt == ecs.end() && it->second[i] != 0) {
                 unordered_map<string, int>::iterator output_index =
                                     output_index_map->find(it->first);
                 // If this TCC hasn't already been seen once, add it to our map
@@ -290,7 +311,7 @@ int TCC_Matrix::write_to_file_in_order_sparse(string outname,
                     ++index;
                 }
                 tsv << output_index_map->at(it->first) << '\t' << i << '\t';
-                tsv << (*matrix)[it->second][i] << endl;
+                tsv << it->second[i] << endl;
             }
         }
     }

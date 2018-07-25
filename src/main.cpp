@@ -144,6 +144,10 @@ int main(int argc, char **argv) {
             }
         }
     }
+    if (kallisto_ec.size() != 0 && !test_open(kallisto_ec)) {
+        cerr << endl << "  ERROR: failed to open " << kallisto_ec << endl;
+        return 1;
+    }
     if (!test_open(out_name + ".ec", 1)) {
         cerr << endl << "  ERROR: failed to open " << out_name << ".ec" << endl;
         return 1;
@@ -179,7 +183,7 @@ int main(int argc, char **argv) {
         // No need to print an error message--readGTFs does it for us.
         return 1;
     }
-    cout << "done" <<  endl;
+    cout << "read " << err << " transcripts" <<  endl;
 
     // Write a header for unmatched_out if necessary. we do so here since
     // we need it to preface any data.

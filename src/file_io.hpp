@@ -19,7 +19,7 @@
 #define ID_END "\""
 #define MAX_NOT_FOUND 25
 #define MIN_UPDATE 1000000
-#define USING_GTF 0
+#define USING_GTF 1
 
 std::string get_eq(const std::vector<std::vector<Exon>*> &exons, Read &read);
 

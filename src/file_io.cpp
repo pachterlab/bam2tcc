@@ -1,11 +1,12 @@
 /**
- * readGTFs and readSAM plus helper functions. See structs.hpp for more info
+ * readGTFs and readSAMs plus helper functions. See structs.hpp for more info
  * about the structs used.
  */
 
 #include <iostream>
 #include <algorithm>
 #include <future>
+#include <seqan/bam_io.h>
 
 #include "file_io.hpp"
 #include "util.hpp"
@@ -41,37 +42,24 @@ vector<Exon> *map_values(unordered_map<string, Exon> &m) {
 vector<Exon> get_read_exon_positions(const Read &r) {
     vector<Exon> exons;
     
-    // Contains numerals of CIGAR string so we know how many times a certain
-    // "type" of pair occurs.
     string count = "";
-    
-    // Keep track of start and end for each exon.
     int start = r.pos, end = start;
-    
-    // Loop through characters in CIGAR string.
     for (uint i = 0; i < r.cigar.size(); ++i) {
-        // If we're looking at a digit, add it to count.
         if (isdigit(r.cigar[i])) {
             count += r.cigar[i];
         }
         else {
-            // If it's an M, D, =, or X character, just add count to end, since
-            // all the indicated base pairs are just part of this exon.
             if (string(1, r.cigar[i]).find_first_of("md=x") != string::npos) {
                 end += stoi(count) - 1;
             }
-            // If it's an N, a region here has been skipped over, so add the
-            // exon to the vector, and update start and end.
             else if (r.cigar[i] == 'n') {
                 exons.push_back(Exon(start, end));
                 start = end + stoi(count) + 1;
                 end = start;
             }
-            // Clear count, since we're starting over.
             count = "";
         }
     }
-    // Push back the last exon.
     if (end != start) {
         exons.push_back(Exon(start, end));
     }
@@ -91,15 +79,10 @@ vector<Exon> get_read_exon_positions(const Read &r) {
 void get_read_exon_transcripts(const vector<Exon> &chrom,
                                vector<Exon> &read_exons) {
     
-    // Iterate through exons in the chromosome/scaffold.
     for (uint i = 0; i < chrom.size(); ++i) {
-        // Iterate through exons that the read is made up of.
         for (uint j = 0; j < read_exons.size(); ++j) {
-            // If the read exon fits into an exon of the chromosome/scaffold...
             if (read_exons[j].start >= chrom[i].start
                 && read_exons[j].end <= chrom[i].end) {
-                // ...add all the transcripts that contain that exon to the read
-                // exon's transcript member.
                 read_exons[j].transcripts->insert(
                     read_exons[j].transcripts->end(),
                     chrom[i].transcripts->begin(), chrom[i].transcripts->end());
@@ -281,7 +264,7 @@ Sequence get_sequence(string info) {
 #if USING_GTF
     seq.id = "";
     string id_start = ID_START;
-    id_end = ID_END;
+    string id_end = ID_END;
     if (id_end.size() == 1) {
         int start = fields[8].find(id_start) + id_start.length();
         int end = fields[8].find(id_end, start + 1);
@@ -346,6 +329,8 @@ int readSAM(string file, int filenumber, int start, int end, int thread,
     if (!f.is_open()) {
         return -1;
     }
+//    seqan::BamFileIn bam(
+//            seqan::toCString(seqan::getAbsolutePath(file.c_str())));
    
     sem.dec();
     cout << "  " << thread << ": reading lines " << start << ".." << end;
@@ -361,14 +346,16 @@ int readSAM(string file, int filenumber, int start, int end, int thread,
     while(line_count < end && getline(f, upper_inp)) {
         /* Update line count and print update message */
         ++line_count;
-        if (verbose && line_count > MIN_UPDATE && thread == 0
+#if 0
+        if (verbose && line_count > MIN_UPDATE //&& thread == 0
                 && (line_count - start) % ten_percent == 0) {        
             sem.dec();
             cout << "    ";
             cout << (line_count - start) / ten_percent << "0% done" << endl;
             sem.inc();
         }
-        
+#endif
+
         /* Skip header and blank lines */
         if (upper_inp.size() == 0 || upper_inp[0] == '@') {
             continue;
@@ -439,9 +426,8 @@ int readSAM(string file, int filenumber, int start, int end, int thread,
 
     /* Attempt to open output file for unmatched reads if outname of this file
      is nonempty. Print warning message if action fails */
-    ofstream fout;
     if (unmatched_outfile.size() != 0) {
-        fout.open(unmatched_outfile, fstream::app);
+        ofstream fout(unmatched_outfile, fstream::app);
         sem.dec();
         if (!fout.is_open()) {
             cerr << "    WARNING: unable to open " << unmatched_outfile << endl;
@@ -480,7 +466,7 @@ int readSAMs(vector<string> &files,
         for (int i = 0; i < files.size(); ++i) {
             int lines = get_line_count(files[i]);
             for (int j = 0; j < perfile - 1; ++j) {
-                unmatched.push_back(async(&readSAM, files[i], i,
+                unmatched.push_back(async(launch::async, &readSAM, files[i], i,
                         lines / perfile * j, lines / perfile * (j + 1),
                         i * perfile + j,
                         ref(exons), ref(matrix), unmatched_outfile, verbose,
@@ -488,7 +474,7 @@ int readSAMs(vector<string> &files,
             }
             // Do the last thread separately becuse I'm paranoid that I'll get
             // an off-by-one error.
-            unmatched.push_back(async(&readSAM,
+            unmatched.push_back(async(launch::async, &readSAM,
                     files[i], i,
                     lines / perfile * (perfile - 1), 0,
                     i * perfile + perfile - 1,
@@ -572,13 +558,6 @@ int readGTF(string file, unordered_map<uint64_t, uint64_t> index_map,
     
     cout << "  Reading " << file << "..." << endl;
     
-    // TODO: figure out what to do with this?
-    //string id_end = ID_END;
-    //if (verbose && id_end.size() > 1) {
-    //    cerr << "    WARNING: ID_END macro in file thing.cpp should be a";
-    //    cerr << " char of size 1" << endl;
-    //}
-    
     /* Start while loop to go through GTF file */
     while(getline(f, inp)) {
         /* Update line count and print update message */
@@ -641,19 +620,10 @@ int readGTF(string file, unordered_map<uint64_t, uint64_t> index_map,
                     id = transcript_count;
                 }
                 
-                
-                // Assume this exon has shown up before. Add the transcript_id
-                // to the appropriate exon. Assumption: repeated exons are the
-                // common case, so we make it fast.
-                try {
-                    chrom.at(key).transcripts->push_back(id);
-                }
-                // It's a new exon, so make an Exon struct to represent it
-                // and add it to map chrom.
-                catch (out_of_range &err) {
+                if (chrom.find(key) == chrom.end()) {
                     chrom.emplace(key, Exon(seq));
-                    chrom.at(key).transcripts->push_back(id);
                 }
+                chrom.at(key).transcripts->push_back(id);
             }
             
             // It's a new chromosome/scaffold, so we need to clear map chrom
@@ -738,5 +708,5 @@ int readGTFs(vector<string> &files, vector<string> &transcriptome,
     
     delete index_map;
     
-    return 0;
+    return transcript_count;
 }

@@ -3,7 +3,7 @@ OBJDIR = obj
 BINDIR = bin
 
 CXX = g++
-CXXFLAGS = -g -Wall -pedantic -ansi --std=c++11 
+CXXFLAGS = -g -I/opt/local/bin/seqan/include -Wall -pedantic -ansi --std=c++14 
 
 EXENAME = main
 

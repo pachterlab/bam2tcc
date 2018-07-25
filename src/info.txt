@@ -17,3 +17,5 @@ TODO: document
 
 TODO: optimize some things? specifically kallisto functions, since those weren't
 written with runtime speed in mind
+
+ALL OF THIS INFORMATION IS OUTDATED. JUST LOOK AT YOUR GITHUB COMMIT MESSAGES.
