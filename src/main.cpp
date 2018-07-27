@@ -109,7 +109,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    // must have gtf and sam files! if not, program prints usage and exits
+    /* Must have gtf and sam files! if not, program prints usage and exits. */
     if (gtf_files.size() == 0 || sam_files.size() == 0) {
         cerr << usage << flush;
         return 1;
@@ -165,18 +165,9 @@ int main(int argc, char **argv) {
 
 
     /* Start reading files and filling in TCC matrix */
-        
-    // Initialize relevant data structures.
-    
-    // Each vector<Exon*> holds pointers to every exon in one chromosome or
-    // scaffold with no duplicates. So, exons holds all exons for an organism,
-    // sorted by chromosome/scaffold.
     vector<vector<Exon>*> *exons = new vector<vector<Exon>*>;
-    
-    // An object in which the data of the TCC matrix resides.
     TCC_Matrix *matrix = new TCC_Matrix(sam_files.size());
 
-    // read GTFs and fill in vector<vector<Exon*>*> completely
     cout << "Reading GTFs... " << endl;
     err = readGTFs(gtf_files, transcriptome_files, *exons, verbose);
     if (err == 1) {
@@ -185,8 +176,6 @@ int main(int argc, char **argv) {
     }
     cout << "read " << err << " transcripts" <<  endl;
 
-    // Write a header for unmatched_out if necessary. we do so here since
-    // we need it to preface any data.
     // TODO: put all this code in its own function! also, you're currently
     // printing mutliple @HD lines--there can only be one...
     if (unmatched_out.size() != 0) {
@@ -227,7 +216,6 @@ int main(int argc, char **argv) {
         outfile.close();
         cout << "done" << endl;
     }
-    // Read SAM files and fill in TCC matrix appropriately.
     cout << "Reading SAM... " << endl;
     unmatched = readSAMs(sam_files, *exons, *matrix,
                             unmatched_out, verbose, threads);

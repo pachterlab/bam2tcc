@@ -44,7 +44,7 @@ int get_index_to_seqid_help(string file, unordered_map<uint64_t, string> &map,
         Sequence seq = get_sequence(inp);
         
         // If the sequence was properly read and it's an exon...
-        if (seq.start != 0 && seq.seqname.size() != 0
+        if (seq.start != -1 && seq.seqname.size() != 0
             && seq.feature.compare("exon") == 0) {
             
             // If it's a new transcript, increment transcript_count.
@@ -200,7 +200,7 @@ int get_index_to_kallisto_index(const vector<string> &gtf,
                                 int verbose) {
    
     if (verbose) {
-        cout << "  Reading transcriptome..." << endl;
+        cout << "  Reading transcriptome...";
     }
 
     // Map from index to transcript_id, which should match...
@@ -225,11 +225,11 @@ int get_index_to_kallisto_index(const vector<string> &gtf,
     
     if (verbose) {
         if (m1->size() > m2->size()) {
-            cerr << "    WARNING: GTF(s) contain more entries than the ";
+            cerr << endl << "    WARNING: GTF(s) contain more entries than the ";
             cerr << "transcriptome file(s)!" << endl;
         }
         else if (m1->size() < m2->size()) {
-            cerr << "    WARNING: Transcriptome file(s) contain more entries ";
+            cerr << endl << "    WARNING: Transcriptome file(s) contain more entries ";
             cerr << "than the GTF files(s)!" << endl;
         }
     }

@@ -15,6 +15,8 @@
 
 using namespace std;
 
+typedef seqan::FormattedFileContext<seqan::BamFileIn, void>::Type TBamContext;
+
 /**
  * @brief Returns a vector allocated on the heap containing all exons in map.
  *
@@ -39,31 +41,27 @@ vector<Exon> *map_values(unordered_map<string, Exon> &m) {
  * @param r         Read to examine. CIGAR string should be entirely lowercase.
  * @return          Vector of exons
  */
-vector<Exon> get_read_exon_positions(const Read &r) {
+vector<Exon> get_read_exon_positions(seqan::BamAlignmentRecord &r) {
     vector<Exon> exons;
-    
-    string count = "";
-    int start = r.pos, end = start;
-    for (uint i = 0; i < r.cigar.size(); ++i) {
-        if (isdigit(r.cigar[i])) {
-            count += r.cigar[i];
-        }
-        else {
-            if (string(1, r.cigar[i]).find_first_of("md=x") != string::npos) {
-                end += stoi(count) - 1;
-            }
-            else if (r.cigar[i] == 'n') {
-                exons.push_back(Exon(start, end));
-                start = end + stoi(count) + 1;
-                end = start;
-            }
-            count = "";
+    int start = r.beginPos, end = start;
+    for (uint i = 0; i < seqan::length(r.cigar); ++i) {
+        switch (r.cigar[i].operation) {
+            case 'M':
+            case 'D':
+            case '=':
+            case 'X': end += r.cigar[i].count;
+                      break;
+            case 'N': exons.push_back(Exon(start, end));
+                      start = end + r.cigar[i].count;
+                      end = start;
+                      break;
+            default: /* do nothing */ break;
         }
     }
-    if (end != start) {
-        exons.push_back(Exon(start, end));
+    if (end == r.beginPos) {
+        cerr << "  COMPLAINS LOUDLY" << endl;
     }
-    
+    exons.push_back(Exon(start, end));
     return exons;
 }
 
@@ -78,7 +76,7 @@ vector<Exon> get_read_exon_positions(const Read &r) {
  */
 void get_read_exon_transcripts(const vector<Exon> &chrom,
                                vector<Exon> &read_exons) {
-    
+   
     for (uint i = 0; i < chrom.size(); ++i) {
         for (uint j = 0; j < read_exons.size(); ++j) {
             if (read_exons[j].start >= chrom[i].start
@@ -105,130 +103,48 @@ void get_read_exon_transcripts(const vector<Exon> &chrom,
  * where it showed up in the GTFs, or to where it shows up in the FASTA
  * transcriptome file if that option was used. See readGTFs for more info.
  */
-string get_eq(const vector<vector<Exon>*> &exons, Read &read) {
-    // Find the vector describing the chromosome/scaffold this read aligned to.
+vector<int> get_eq(const vector<vector<Exon>*> &exons, TBamContext &cont,
+        seqan::BamAlignmentRecord rec) {
+    vector<int> eq;
+
+    /* Find the vector describing the chromosome/scaffold this read aligned
+     * to. If we can't find it, return immediately.*/
     vector<Exon> *chrom = NULL;
     for (uint i = 0; i < exons.size(); ++i) {
         if (exons[i]->size() != 0
-            && read.rname.compare(((*exons[i])[0]).seqname) == 0) {
+            && lower(string(seqan::toCString(
+                    seqan::contigNames(cont)[rec.rID]))).compare(
+                    ((*exons[i])[0]).seqname) == 0) {
             chrom = exons[i];
             break;
         }
     }
-    // If we don't find it, we can't get the equivalence class.
     if (chrom == NULL) {
-        return "";
+        return eq;
     }
-    
-    // Get "exons" of this read and fill in their associated transcript vectors.
-    vector<Exon> read_exons = get_read_exon_positions(read);
+
+    /* Get "exons" of this read and fill in their associated transcript
+     * vectors. */
+    vector<Exon> read_exons = get_read_exon_positions(rec);
     get_read_exon_transcripts(*chrom, read_exons);
     
-    // Stores intersection of all exon.transcripts vectors.
-    // Assumption: read_exons non-empty. The read exists, so read_exons contains
-    // at least one exon describing either the entire read, or the first part of
-    // it. Sort it in preparation for set_intersection.
-    vector<uint64_t> inter(*read_exons[0].transcripts);
-    sort(inter.begin(), inter.end());
-    
+    /* Take the intersection of all the transcripts the read exons aligned
+     * to, which gives the equivalence class of this read. */
+    vector<int> inter(*read_exons[0].transcripts);
+    sort(inter.begin(), inter.end()); 
     for (uint i = 1; i < read_exons.size(); ++i) {
-        vector<uint64_t> temp; // Temporarily store intersection here.
-        vector <uint64_t> *curr_transcripts = read_exons[i].transcripts;
-        
-        // Sort transcripts in preparation for set_intersection.
+        vector<int> temp;
+        vector <int> *curr_transcripts = read_exons[i].transcripts;
+        /* Sort transcripts in preparation for set_intersection. */
         sort(curr_transcripts->begin(), curr_transcripts->end());
-        
-        // Get intersection of inter and transcripts of this exon. Store in
-        // temp. We need to use back_inserter(temp), since set_intersection
-        // will usually overwrite the elements in whatever vector it's inserting
-        // into. Since temp is empty, there is nothing to overwrite, and using
-        // temp.begin() will segfault 11. We instead want to add elements--thus,
-        // we need back_inserter.
         set_intersection(inter.begin(), inter.end(),
                          curr_transcripts->begin(), curr_transcripts->end(),
                          back_inserter(temp));
-        
-        // Transfer intersection in temp to inter.
         inter = temp;
     }
-    
-    // Sort so that the equivalence class string lists the transcripts in the
-    // same order each time.
-    sort(inter.begin(), inter.end());
-    
-    string eq = "";
-    for (uint i = 0; i < inter.size(); ++i) {
-        eq += to_string(inter[i]) + ",";
-    }
-    return eq.substr(0, eq.size() - 1); // Get rid of the last comma.
-}
-
-
-/**
- * @brief Get length of the aligned region of the read.
- 
- * This is not necessarily equivalent to the length of the read, since the CIGAR
- * string may indicate, for example, a base pair that had been deleted. Then,
- * this function would return (length of read) + 1.
- *
- * @param r         Read to parse
- * @return          Length of read
- */
-int get_read_length(const Read &r) {
-    int len = 0;
-    string count = "";
-    for (uint i = 0; i < r.cigar.size(); ++i) {
-        if (isdigit(r.cigar[i])) {
-            count += r.cigar[i];
-        }
-        else {
-            if (string(1, r.cigar[i]).find_first_of("md=x") != string::npos) {
-                if (count.size() == 0) {
-                    ++len;
-                }
-                else {
-                    len += stoi(count);
-                }
-            }
-            count = "";
-        }
-    }
-    
-    return len;
-}
-
-
-/**
- * @brief Populates and returns a newly allocated Read struct based on
- * information provided in string info, a line from a SAM file. Prints
- * warning message and returns NULL if error occurs while parsing string.
- *
- * @param[in] info a line in a SAM file with information about start and
- * end indices of read within genome
- *
- * @return New Read struct populated with available information. Returns
- * NULL if info does not contain the expected number of fields or if numerical
- * fields pos and end cannot be parsed.
- */
-void get_read(string info, Read &read) {
-    read.pos =  PARSE_FAILED;
-    
-    vector<string> fields = parse_tsv(info);
-    if (fields.size() < NUM_SAM_ELT) {
-        return;
-    }
-    
-    read.cigar = fields[5];
-    read.qname = fields[0];
-    read.rname = fields[2];
-    try {
-        read.flag = stoi(fields[1]);
-        read.pos = stoi(fields[3]);
-        read.end = read.pos + get_read_length(read) - 1;
-    }
-    catch (invalid_argument &e) {
-        read.pos = PARSE_FAILED;
-    }
+    /* Remove duplicates. inter is already sorted! */
+    inter.erase(unique(inter.begin(), inter.end()), inter.end());
+    return inter;
 }
 
 /**
@@ -247,7 +163,7 @@ void get_read(string info, Read &read) {
  */
 Sequence get_sequence(string info) {
     Sequence seq;
-    seq.start = 0;
+    seq.start = -1;
     
     vector<string> fields = parse_tsv(info);
     if (fields.size() < NUM_GTF_ELT) {
@@ -277,11 +193,12 @@ Sequence get_sequence(string info) {
 #endif
     
     try {
-        seq.start = stoi(fields[3]);
+        /* Using 0-indexed, half-interval in compliance with seqan. */
+        seq.start = stoi(fields[3]) - 1;
         seq.end = stoi(fields[4]);
     }
     catch (invalid_argument &e) {
-        seq.start = 0;
+        seq.start = -1;
     }
     return seq;
 }
@@ -306,12 +223,6 @@ Sequence get_sequence(string info) {
 int readSAM(string file, int filenumber, int start, int end, int thread,
             vector<vector<Exon>*> &exons, TCC_Matrix &matrix,
             string unmatched_outfile, int verbose, Semaphore &sem) {
-    
-    string inp, upper_inp, prev_inp, prev_qname, eq;
-    Read read;
-    
-    uint64_t unmatched = 0;
-    vector<string> *unmatched_lines = new vector<string>;
 
     uint64_t line_count = 0;
     if (end == 0) {
@@ -319,131 +230,137 @@ int readSAM(string file, int filenumber, int start, int end, int thread,
     }
     uint64_t lines = end - start;
     uint64_t ten_percent = lines / 10;
-    if (lines == -1) {
+    if (lines <= 0) {
         return -1;
     }
-   
-    /* Open SAM file a file for unmatched output if the parameter for the name
-     of this file is not an empty string. Return -1 if action fails */
-    ifstream f(file);
-    if (!f.is_open()) {
+
+    seqan::BamFileIn bam;
+    if (!seqan::open(bam, file.c_str())) {
+        sem.dec();
+        cerr << "  ERROR: failed to open " << file << endl;
+        sem.inc();
         return -1;
     }
-//    seqan::BamFileIn bam(
-//            seqan::toCString(seqan::getAbsolutePath(file.c_str())));
-   
-    sem.dec();
-    cout << "  " << thread << ": reading lines " << start << ".." << end;
-    cout << " of " << file << "..." << endl;
-    sem.inc();
 
-    /* Go to the starting line of this file. */
-    while (line_count < start && getline(f, upper_inp)) {
+    /* Everything after this is a bit convoluted. Mostly because I can't find a
+     * way to "unread" a line, as it were. */
+    seqan::BamAlignmentRecord rec;
+    seqan::BamAlignmentRecord rec2;
+    seqan::BamHeader header;
+    seqan::readHeader(header, bam);
+    TBamContext cont = context(bam);
+
+    /* Read in the first line. */
+    if (start == 0) {
         ++line_count;
+        seqan::readRecord(rec, bam);
+    } else {
+        while (line_count < start - 1) {
+            ++line_count;
+            seqan::readRecord(rec, bam);
+        }
+        string qName = seqan::toCString(rec.qName);
+        ++line_count;
+        seqan::readRecord(rec, bam);
+        /* If `start` is in the middle of a multimapping (multientry) read,
+         * keep going until it's done. */
+        while (!atEnd(bam)
+                && qName.compare(seqan::toCString(rec.qName)) == 0) {
+            ++line_count;
+            seqan::readRecord(rec, bam);
+        }
     }
-    
-    /* Start looping through each line of the file */
-    while(line_count < end && getline(f, upper_inp)) {
-        /* Update line count and print update message */
+    string qName = seqan::toCString(rec.qName);
+    vector<int> eq;
+    if (seqan::hasFlagMultiple(rec)) {
         ++line_count;
-#if 0
-        if (verbose && line_count > MIN_UPDATE //&& thread == 0
-                && (line_count - start) % ten_percent == 0) {        
-            sem.dec();
-            cout << "    ";
-            cout << (line_count - start) / ten_percent << "0% done" << endl;
-            sem.inc();
+        seqan::readRecord(rec2, bam);
+        if (!seqan::hasFlagUnmapped(rec) && !seqan::hasFlagUnmapped(rec2)) { 
+            /* eq = intersect(get_eq(rec), get_eq(rec2)) */
+            /* get_eq returns a sorted vector, so no need to sort here. */
+            vector<int> temp1 = get_eq(exons, cont, rec);
+            vector<int> temp2 = get_eq(exons, cont, rec2);
+            set_intersection(temp1.begin(), temp1.end(),
+                    temp2.begin(), temp2.end(), back_inserter(eq));
+            /* Remove duplicates. eq is already sorted. */
+            eq.erase(unique(eq.begin(), eq.end()), eq.end());
         }
-#endif
+    } else {
+        if (!seqan::hasFlagUnmapped(rec)) {
+            eq = get_eq(exons, cont, rec);
+        }
+    }
 
-        /* Skip header and blank lines */
-        if (upper_inp.size() == 0 || upper_inp[0] == '@') {
-            continue;
-        }
-        
-        /* Parse input and place information in read */
-        inp = lower(upper_inp);
-        get_read(inp, read);
-        
-        /* Make sure read is valid. If not, skip it. */
-        if (read.flag == 4) {
-            // According to SAM specifications, this means it was not aligned.
-            continue;
-        }
-        if (read.pos == PARSE_FAILED) {
-            if (verbose) {
-                sem.dec();
-                cerr << "    WARNING: unable to parse line ";
-                cerr << line_count << ". Make sure this line has 11 tab-";
-                cerr << "separated fields, valid int values, and a";
-                cerr << " CIGAR string" << endl;
-                sem.inc();
+    /* Start looping through the rest of the file. */
+    int unmatched = 0;
+    while (!atEnd(bam)) {
+        ++line_count;
+        seqan::readRecord(rec, bam);
+
+        /* If this is a new read (i.e. new qName), enter the TCC of the previous
+         * one into the matrix. */
+        if (qName.compare(seqan::toCString(rec.qName)) != 0) {
+            if (line_count >= end) {
+                break;
             }
-            continue;
-        }
-        
-        /* Get equivalence class. How we do it depends on whether we've seen
-           this read before. */
-        if (prev_qname.compare(read.qname) == 0) {
-            // Check whether this is a read that mapped to multiple locations.
-            if (eq.size() == 0) {
-                eq = get_eq(exons, read);
-            } else {
-                matrix.dec_TCC(eq, filenumber);
-                string temp = get_eq(exons, read);
-                if (temp.size() != 0) {
-                    eq += ',' + temp;
-                }
-                vector<uint64_t> to_sort = parse_csv_ints(eq);
-                sort(to_sort.begin(), to_sort.end());
-                eq = "";
-                for (uint i = 0; i < to_sort.size(); ++i) {
-                    eq += to_string(to_sort[i]) + ',';
-                }
-                eq = eq.substr(0, eq.size() - 1); // Get rid of last comma.
-            }
-        }
-        else {
-            // Update unmatched if the last read didn't align anywhere.
             if (eq.size() == 0) {
                 ++unmatched;
-                unmatched_lines->push_back(prev_inp);
+            } else {
+                string string_eq = to_string(eq[0]);
+                for (int i = 1; i < eq.size(); ++i) {
+                    string_eq += ',' + to_string(eq[i]);
+                }
+                matrix.inc_TCC(string_eq, filenumber);
+                eq.clear();
             }
+            qName = seqan::toCString(rec.qName);
+        }
 
-            // This is a new read. We just want to get the equivalence class
-            // and update prev_qname.
-            eq = get_eq(exons, read);
-            prev_qname = read.qname;
+        if (seqan::hasFlagUnmapped(rec)) {
+            if (seqan::hasFlagMultiple(rec)) {
+                ++line_count;
+                seqan::readRecord(rec2, bam);
+            }
+            continue;
         }
-        
-        /* And finally, add it to the matrix! */
-        if (eq.size() != 0) {
-            matrix.inc_TCC(eq, filenumber);
+        vector<int> temp_eq = get_eq(exons, cont, rec);
+        if (seqan::hasFlagMultiple(rec)) {   
+            ++line_count;
+            seqan::readRecord(rec2, bam);
+            if (seqan::hasFlagUnmapped(rec2)) {
+                continue;
+            } else {
+                /* temp_eq = intersect(temp_eq, get_eq(rec2)) */
+                vector<int> temp1 = get_eq(exons, cont, rec2);
+                vector<int> temp2;
+                set_intersection(temp_eq.begin(), temp_eq.end(),
+                temp1.begin(), temp1.end(), back_inserter(temp2));
+                temp_eq = temp2;
+                /* Remove duplicates. temp_eq is already sorted. */
+                temp_eq.erase(unique(temp_eq.begin(), temp_eq.end()),
+                    temp_eq.end());
+            }
         }
-        prev_inp = upper_inp;
+        /* eq = union(eq, temp_eq) */
+        eq.insert(eq.end(), temp_eq.begin(), temp_eq.end());
+        sort(eq.begin(), eq.end());
+        /* Remove duplicates. */
+        eq.erase(unique(eq.begin(), eq.end()), eq.end());
     }
 
-
-    /* Attempt to open output file for unmatched reads if outname of this file
-     is nonempty. Print warning message if action fails */
-    if (unmatched_outfile.size() != 0) {
-        ofstream fout(unmatched_outfile, fstream::app);
-        sem.dec();
-        if (!fout.is_open()) {
-            cerr << "    WARNING: unable to open " << unmatched_outfile << endl;
+    /* The last read was never added to the matrix. Do so now. */
+    if (eq.size() == 0) {
+        ++unmatched;
+    } else {
+        string string_eq = to_string(eq[0]);
+        for (int i = 1; i < eq.size(); ++i) {
+            string_eq += ',' + to_string(eq[i]);
         }
-        else{
-            for (int i = 0; i < unmatched_lines->size(); ++i) {
-                fout << (*unmatched_lines)[i] << endl;
-            }
-            fout.close();
-        }
-        sem.inc();
+        matrix.inc_TCC(string_eq, filenumber);
     }
 
-    /* Clean-up and return */
-    f.close();
-    
+    /* TODO: output unmatched reads. */
+
     return unmatched;
 }
 
@@ -577,7 +494,7 @@ int readGTF(string file, unordered_map<uint64_t, uint64_t> index_map,
         
         /* Look at values and update vector exons, map chrom, and various
          counters appropriately */
-        if (seq.start == 0) {
+        if (seq.start == -1) {
             if (verbose) {
                 cerr << "    WARNING: Failed to read line ";
                 cerr << line_count << endl;

@@ -15,8 +15,8 @@
  * detail on each member.
  */
 struct Sequence {
-    uint start;          /*< Start index of sequence. 1-indexed. */
-    uint end;            /*< End index of sequence. 1-indexed. */
+    int start;          /*< Start index of sequence. 1-indexed. */
+    int end;            /*< End index of sequence. 1-indexed. */
     std::string seqname; /*< Chromosome or scaffold of sequence. */
     std::string feature; /*< Feature type, e.g. exon, transcript. */
     std::string id;      /*< Transcript ID, as indicated in attribute field. */
@@ -26,14 +26,14 @@ struct Sequence {
  * Corresponds to an exon.
  */
 struct Exon {
-    uint32_t start;                        /*< Start index of exon.
-                                            1-indexed. */
-    uint32_t end;                          /*< End index of exon. 1-indexed. */
-    std::string seqname;                   /*< Chromosome/scaffold of exon. */
-    std::vector<uint64_t> *transcripts;    /*< All transcripts that contain this
-                                            exon. Likely to contain multiple
-                                            entries, since exons are
-                                            repetitive. */
+    int start;                        /* Start index of exon.
+                                       *  1-indexed. */
+    int end;                          /* End index of exon. 1-indexed. */
+    std::string seqname;              /* Chromosome/scaffold of exon. */
+    std::vector<int> *transcripts;    /* All transcripts that contain this
+                                       * exon. Likely to contain multiple
+                                       * entries, since exons are
+                                       *  repetitive. */
     
     /**
      * Constructor for an exon from init_start to init_end.
@@ -43,7 +43,7 @@ struct Exon {
     Exon(uint init_start = 0, uint init_end = 0) {
         start = init_start;
         end = init_end;
-        transcripts = new std::vector<uint64_t>;
+        transcripts = new std::vector<int>;
     }
     
     /**
@@ -55,7 +55,7 @@ struct Exon {
         start = seq.start;
         end = seq.end;
         seqname = seq.seqname;
-        transcripts = new std::vector<uint64_t>;
+        transcripts = new std::vector<int>;
     }
     
     /**
@@ -68,7 +68,7 @@ struct Exon {
         start = e.start;
         end = e.end;
         seqname = e.seqname;
-        transcripts = new std::vector<uint64_t>(*e.transcripts);
+        transcripts = new std::vector<int>(*e.transcripts);
     }
     
     /**
