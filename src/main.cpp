@@ -218,8 +218,10 @@ int main(int argc, char **argv) {
         cout << "done" << endl;
     }
     cout << "Reading SAM... " << endl;
-    unmatched = readSAMs(sam_files, *exons, *matrix,
-                            unmatched_out, verbose, threads);
+    for (int i = 0; i < sam_files.size(); ++i) {
+        unmatched += readSAM(sam_files[i], i, *exons, *matrix, unmatched_out,
+                verbose, threads);
+    }
     cout << "done" << endl;
 
         

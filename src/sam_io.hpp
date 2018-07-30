@@ -17,7 +17,7 @@ std::vector<int> get_eq(
 
 void get_read(std::string info, Read &read);
 
-int readSAMs(std::vector<std::string> &files,
+int readSAM(std::string file, int filenumber,
              std::vector<std::vector<Exon>*> &exons, TCC_Matrix &matrix,
              std::string unmatched_outfile, int verbose, int nthreads);
 

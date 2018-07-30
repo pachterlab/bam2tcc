@@ -87,8 +87,6 @@ void get_read_exon_transcripts(const vector<Exon> &chrom,
  */
 vector<int> get_eq(const vector<vector<Exon>*> &exons, TBamContext &cont,
         seqan::BamAlignmentRecord rec) {
-    vector<int> eq;
-
     /* Find the vector describing the chromosome/scaffold this read aligned
      * to. If we can't find it, return immediately.*/
     vector<Exon> *chrom = NULL;
@@ -102,7 +100,7 @@ vector<int> get_eq(const vector<vector<Exon>*> &exons, TBamContext &cont,
         }
     }
     if (chrom == NULL) {
-        return eq;
+        return {};
     }
 
     /* Get "exons" of this read and fill in their associated transcript
@@ -145,7 +143,7 @@ vector<int> get_eq(const vector<vector<Exon>*> &exons, TBamContext &cont,
  *
  * @return -1 if file fails to open, else 0
  */
-int readSAM(string file, int filenumber, int start, int end, int thread,
+int readSAMHelp(string file, int filenumber, int start, int end, int thread,
             vector<vector<Exon>*> &exons, TCC_Matrix &matrix,
             string unmatched_outfile, int verbose, Semaphore &sem) {
 
@@ -289,42 +287,25 @@ int readSAM(string file, int filenumber, int start, int end, int thread,
     return unmatched;
 }
 
-int readSAMs(vector<string> &files,
+int readSAM(string file, int filenumber,
              vector<vector<Exon>*> &exons, TCC_Matrix &matrix,
              string unmatched_outfile, int verbose, int nthreads) {
    
-    // Vector of all our possible threads. 
     vector<future<int>> unmatched;
-
-    // Used to coordinate stdout, stderr, and shared file output.
     Semaphore sem;
-
-    /* Figure out how to split up workload, e.g. whether we should just give
-     each thread some number of files, or if we can set multiple threads on a
-     single file. */
-    // For now, assume all files are about the same size.
-    if (files.size() <= nthreads) {
-        int perfile = nthreads / files.size();
-        for (int i = 0; i < files.size(); ++i) {
-            int lines = get_line_count(files[i]);
-            for (int j = 0; j < perfile - 1; ++j) {
-                unmatched.push_back(async(launch::async, &readSAM, files[i], i,
-                        lines / perfile * j, lines / perfile * (j + 1),
-                        i * perfile + j,
-                        ref(exons), ref(matrix), unmatched_outfile, verbose,
-                        ref(sem)));
-            }
-            // Do the last thread separately becuse I'm paranoid that I'll get
-            // an off-by-one error.
-            unmatched.push_back(async(launch::async, &readSAM,
-                    files[i], i,
-                    lines / perfile * (perfile - 1), 0,
-                    i * perfile + perfile - 1,
+        int lines = get_line_count(file);
+        for (int j = 0; j < nthreads - 1; ++j) {
+            unmatched.push_back(async(launch::async, &readSAMHelp,
+                    file, filenumber,
+                    lines / nthreads * j, lines / nthreads * (j + 1), j,
                     ref(exons), ref(matrix), unmatched_outfile, verbose,
                     ref(sem)));
         }
-    } else {
-    }
+        unmatched.push_back(async(launch::async, &readSAMHelp,
+                file, filenumber,
+                lines / nthreads * (nthreads - 1), 0, nthreads - 1,
+                ref(exons), ref(matrix), unmatched_outfile, verbose,
+                ref(sem)));
 
     int total_unmatched = 0;
     for (int i = 0; i < unmatched.size(); ++i) {
