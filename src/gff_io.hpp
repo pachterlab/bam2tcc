@@ -14,7 +14,7 @@
 
 Sequence get_sequence(std::string info);
 
-int readGTFs(std::vector<std::string> &files,
+int readGFFs(std::vector<std::string> &files,
              std::vector<std::string> &transcriptome,
              std::vector<std::vector<Exon>*> &exons, int verbose);
 

@@ -92,86 +92,60 @@ Sequence get_sequence(string info) {
  *
  * @return                      1 if file fails to open, else 0
  */
-int readGTF(string file, unordered_map<uint64_t, uint64_t> index_map,
+int readGFF(string file, unordered_map<uint64_t, uint64_t> index_map,
             vector<vector<Exon>*> &exons, uint64_t &transcript_count,
             int verbose) {
+     
+    cout << "  Reading " << file << "..." << flush;
     
-    // Holds one line of the file. For use with getline.
-    string inp;
-    
-    // seqname and id of previous exon. For use with seq_count.
-    string prev_seqname = "", prev_id = "";
-    
-    // Maps "start,end" to exon in ONE chromosome or scaffold. Add info to
-    // vector exons and clear whenever a new chromosome or scaffold is
-    // encountered.
+    string prev_ref = "", prev_transcript_id = "";
     unordered_map<string, Exon> chrom;
     
-    // Number of current line being read. For use in error messages if a line
-    // cannot be parsed.
     uint64_t line_count = 0;
-    
-    // Total number of lines in file. If verbose, prints update messages every
-    // 10% done.
     uint64_t lines = get_line_count(file);
-    if (lines == -1) { // File could not be opened! Return 1.
+    if (lines == -1) {
         return 1;
     }
-    // 10% of the file. If verbose, prints update messages every ten_percent
-    // lines.
     uint64_t ten_percent = lines / 10;
     
-    /* Open GTF files. Return 1 if error occurs */
-    ifstream f(file);
-    if (!f.is_open()) {
+    seqan::GffFileIn gff;
+    if (!seqan::open(gff, file.c_str())) {
         return 1;
     }
-    
-    cout << "  Reading " << file << "..." << endl;
-    
-    /* Start while loop to go through GTF file */
-    while(getline(f, inp)) {
-        /* Update line count and print update message */
+    seqan::GffRecord rec;
+    while(!seqan::atEnd(gff)) {
         ++line_count;
+        seqan::readRecord(rec, gff);
+#if 0
         if (verbose && lines > MIN_UPDATE && line_count % ten_percent == 0) {
             cout << "    " << line_count / ten_percent << "0% done" << endl;
         }
-        
-        /* Skip header and blank lines */
-        if (inp.size() == 0 || inp[0] == '#') {
-            continue;
-        }
-        
-        /* Parse input and place information in seq */
-        inp = lower(inp);
-        Sequence seq = get_sequence(inp);
-        
-        /* Look at values and update vector exons, map chrom, and various
-         counters appropriately */
-        if (seq.start == -1) {
+#endif   
+        if (string(seqan::toCString(rec.ref)).compare(".")  == 0) {
             if (verbose) {
-                cerr << "    WARNING: Failed to read line ";
-                cerr << line_count << endl;
+                cerr << endl << "    WARNING: Line " << line_count;
+                cerr << " contains no information in seqid field. It will not ";
+                cerr << "be used.";
             }
         }
-        else if (seq.seqname.size() == 0) {
-            if (verbose) {
-                cerr << "    WARNING: Line " << line_count;
-                cerr << " contains no information in seqname field" << endl;
+        else if (lower(seqan::toCString(rec.type)).compare("exon") == 0) {
+            string key = to_string(rec.beginPos) + "," + to_string(rec.endPos);
+            string transcript_id = "";
+            for (int i = 0; i < length(rec.tagNames); ++i) {
+                if (lower(seqan::toCString(rec.tagNames[i])).compare(
+                            "transcript_id") == 0) {
+                    transcript_id = lower(seqan::toCString(rec.tagValues[i]));
+                }
             }
-        }
-        else if (seq.feature.compare("exon") == 0) {
-            // Key for map chrom.
-            string key = to_string(seq.start) + "," + to_string(seq.end);
-            
-            // Are we looking at the same chromosome/scaffold? If so, we update
-            // the relevant exon in map chrom.
-            if (prev_seqname.compare(seq.seqname) == 0) {
-                // Only update seq_count if we're looking at an exon in
-                // a new transcript.
-                if (prev_id.compare(seq.id) != 0) {
+            if (transcript_id.size() == 0) {
+                cerr << endl << "    WARNING: Could not find transcript_id tag";
+                cerr << " for line " << line_count << ".";
+            }
+
+            if (prev_ref.compare(seqan::toCString(rec.ref)) == 0) {
+                if (prev_transcript_id.compare(transcript_id) != 0) {
                     ++transcript_count;
-                    prev_id = seq.id;
+                    prev_transcript_id = transcript_id;
                 }
                 
                 uint64_t id;
@@ -181,10 +155,10 @@ int readGTF(string file, unordered_map<uint64_t, uint64_t> index_map,
                     }
                     catch (out_of_range &err) {
                         id = -1;
-                        cerr << "  WARNING: unable to map index ";
-                        cerr << transcript_count << " to transcriptome's. ";
-                        cerr << "It will show up in EC as " << id <<  ".";
-                        cerr << endl;
+                        cerr << endl << "    WARNING: unable to map GFF ";
+                        cerr << "transcript " << transcript_count;
+                        cerr << " to transcriptome. It will show up in EC as ";
+                        cerr << id <<  ".";
                     }
                 }
                 else {
@@ -192,27 +166,17 @@ int readGTF(string file, unordered_map<uint64_t, uint64_t> index_map,
                 }
                 
                 if (chrom.find(key) == chrom.end()) {
-                    chrom.emplace(key, Exon(seq));
+                    chrom.emplace(key, Exon(rec));
                 }
                 chrom.at(key).transcripts->push_back(id);
-            }
-            
-            // It's a new chromosome/scaffold, so we need to clear map chrom
-            // and create a new vector in which to place the exon.
-            else {
-                // Update seqname.
-                prev_seqname = seq.seqname;
-                
-                // If we have something in chrom, we add it to vector exons
-                // and clear it.
+            } else {
+                prev_ref = seqan::toCString(rec.ref);
                 if (!chrom.empty()) {
                     exons.push_back(map_values(chrom));
                     chrom.clear();
                 }
-                
-                // This is definitely a new transcript, so update.
                 ++transcript_count;
-                prev_id = seq.id;
+                prev_transcript_id = transcript_id;
                 
                 uint64_t id;
                 if (!index_map.empty()) {
@@ -221,18 +185,16 @@ int readGTF(string file, unordered_map<uint64_t, uint64_t> index_map,
                     }
                     catch (out_of_range &err) {
                         id = -1;
-                        cerr << "  WARNING: unable to map index ";
-                        cerr << transcript_count << " to transcriptome's. ";
-                        cerr << "It will show up in EC as " << id << ".";
-                        cerr << endl;
+                        cerr << endl << "    WARNING: unable to map GFF ";
+                        cerr << "transcript " << transcript_count;
+                        cerr << " to transcriptome. It will show up in EC as ";
+                        cerr << id <<  ".";
                     }
                 }
                 else {
                     id = transcript_count;
                 }
-                
-                // Add the new exon to the now-empty map chrom.
-                chrom.emplace(key, Exon(seq));
+                chrom.emplace(key, Exon(rec));
                 chrom.at(key).transcripts->push_back(id);
             }
         }
@@ -243,14 +205,10 @@ int readGTF(string file, unordered_map<uint64_t, uint64_t> index_map,
         exons.push_back(map_values(chrom));
     }
     
-    f.close();
     return 0;
 }
 
-/**
- *
- */
-int readGTFs(vector<string> &files, vector<string> &transcriptome,
+int readGFFs(vector<string> &files, vector<string> &transcriptome,
              vector<vector<Exon>*> &exons, int verbose) {
     // 0-index the transcript counts. This will make count start at 0.
     uint64_t transcript_count = -1;
@@ -269,7 +227,7 @@ int readGTFs(vector<string> &files, vector<string> &transcriptome,
     }
     
     for (uint i = 0; i < files.size(); ++i) {
-        int ret = readGTF(files[i], *index_map, exons,
+        int ret = readGFF(files[i], *index_map, exons,
                           transcript_count, verbose);
         if (ret == 1) {
             cerr << "  ERROR: could not read " << files[i] << endl;

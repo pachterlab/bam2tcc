@@ -182,7 +182,7 @@ int main(int argc, char **argv) {
     TCC_Matrix *matrix = new TCC_Matrix(sam_files.size());
 
     cout << "Reading GTFs... " << endl;
-    err = readGTFs(gtf_files, transcriptome_files, *exons, verbose);
+    err = readGFFs(gtf_files, transcriptome_files, *exons, verbose);
     if (err == 1) {
         // No need to print an error message--readGTFs does it for us.
         return 1;

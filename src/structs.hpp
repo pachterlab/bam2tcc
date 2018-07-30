@@ -2,11 +2,13 @@
  * Structs used to hold information from GTF and SAM files.
  */
 
-#include <string>
-#include <fstream>
-
 #ifndef structs_hpp
 #define structs_hpp
+
+#include <string>
+#include <fstream>
+#include <seqan/gff_io.h>
+#include "util.hpp"
 
 #define PARSE_FAILED 0xFFFF  // Read failed if read.pos is this number.
 
@@ -57,7 +59,14 @@ struct Exon {
         seqname = seq.seqname;
         transcripts = new std::vector<int>;
     }
-    
+
+    Exon(seqan::GffRecord &rec) {
+        start = rec.beginPos;
+        end = rec.endPos;
+        seqname = lower(seqan::toCString(rec.ref));
+        transcripts = new std::vector<int>;
+    }
+
     /**
      * Copy constructor.
      * @param e         Exon to copy. const because if it's not, I get a
