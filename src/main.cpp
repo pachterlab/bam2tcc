@@ -7,6 +7,8 @@
 #include <time.h>             // provides total time elapsed
 #include <getopt.h>           // getopt_long to parse commandline args
 #include <set>
+#include <seqan/gff_io.h>     /* Test-open of GFF and SAM files */
+#include <seqan/bam_io.h>
 
 #include "structs.hpp"
 #include "gff_io.hpp"
@@ -121,16 +123,26 @@ int main(int argc, char **argv) {
     cout << "Checking that all files are valid ";
     cout << "and clearing output files... " << flush;
     for (uint i = 0; i < gtf_files.size(); ++i) {
-        if (!test_open(gtf_files[i])) {
+        seqan::GffFileIn gff;
+        if (!seqan::open(gff, gtf_files[i].c_str())) {
             cerr << endl << "  ERROR: Failed to open " << gtf_files[i] << endl;
             return 1;
         }
+        seqan::GffRecord rec;
+        seqan::readRecord(rec, gff);
+        seqan::close(gff);
     }
     for (uint i = 0; i < sam_files.size(); ++i) {
-        if (!test_open(sam_files[i])) {
+        seqan::BamFileIn bam;
+        if (!seqan::open(bam, sam_files[i].c_str())) {
             cerr << endl <<  "  ERROR: failed to open " << sam_files[i] << endl;
             return 1;
         }
+        seqan::BamHeader head;
+        seqan::readHeader(head, bam);
+        seqan::BamAlignmentRecord rec;
+        seqan::readRecord(rec, bam);
+        seqan::close(bam);
     }
     if (unmatched_out.size() != 0 && !test_open(unmatched_out, 1)) {
         cerr << endl << "  ERROR: failed to open " << unmatched_out << endl;
