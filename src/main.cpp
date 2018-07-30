@@ -9,7 +9,8 @@
 #include <set>
 
 #include "structs.hpp"
-#include "file_io.hpp"
+#include "gff_io.hpp"
+#include "sam_io.hpp"
 #include "util.hpp"
 #include "kallisto_util.hpp"
 #include "TCC_Matrix.hpp"

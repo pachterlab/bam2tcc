@@ -7,7 +7,8 @@ CXXFLAGS = -g -I/opt/local/bin/seqan/include -Wall -pedantic -ansi --std=c++14
 
 EXENAME = main
 
-OBJS = $(OBJDIR)/TCC_Matrix.o $(OBJDIR)/file_io.o $(OBJDIR)/kallisto_util.o $(OBJDIR)/util.o 
+OBJS = $(OBJDIR)/TCC_Matrix.o $(OBJDIR)/gff_io.o $(OBJDIR)/sam_io.o \
+$(OBJDIR)/kallisto_util.o $(OBJDIR)/util.o 
 
 all: main
 

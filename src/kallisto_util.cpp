@@ -9,7 +9,7 @@
 
 #include "kallisto_util.hpp"
 #include "structs.hpp"
-#include "file_io.hpp"
+#include "gff_io.hpp"
 #include "util.hpp"
 
 using namespace std;
