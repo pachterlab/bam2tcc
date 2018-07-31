@@ -20,62 +20,6 @@ vector<Exon> *map_values(unordered_map<string, Exon> &m) {
 }
 
 /**
- * @brief Populates and returns a newly allocated Sequence struct based on
- * information provided in string info, a line from a GTF file.
- *
- * @param[in] info   a line in a GTF file with information about feature (gene,
- *                   exon, transcript, etc.), start, and end in appropriate
- *                   locations. Ninth field "attribute" should contain
- *                   "transcript_id: " followed by transcript ID for optional
- *                   transcriptome-order output.
- *
- * @return New Sequence struct populated with available information. Returns
- * NULL if info does not contain the expected number of fields or if numerical
- * fields start and end cannot be parsed.
- */
-Sequence get_sequence(string info) {
-    Sequence seq;
-    seq.start = -1;
-    
-    vector<string> fields = parse_tsv(info);
-    if (fields.size() < NUM_GTF_ELT) {
-        return seq;
-    }
-    
-    seq.seqname = fields[0];
-#if USING_GTF
-    seq.feature = fields[2];
-#else
-    seq.feature = "exon";
-#endif
-    
-#if USING_GTF
-    seq.id = "";
-    string id_start = ID_START;
-    string id_end = ID_END;
-    if (id_end.size() == 1) {
-        int start = fields[8].find(id_start) + id_start.length();
-        int end = fields[8].find(id_end, start + 1);
-        if (start != string::npos && end != string::npos) {
-            seq.id = fields[8].substr(start, end - start);
-        }
-    }
-#else
-    seq.id = fields[8];
-#endif
-    
-    try {
-        /* Using 0-indexed, half-interval in compliance with seqan. */
-        seq.start = stoi(fields[3]) - 1;
-        seq.end = stoi(fields[4]);
-    }
-    catch (invalid_argument &e) {
-        seq.start = -1;
-    }
-    return seq;
-}
-
-/**
  * @brief Reads annotated sequences in (GTF) file. Attribute (9th) field should
  * contain "transcript_id: " followed by the transcript ID with no spaces.
  *

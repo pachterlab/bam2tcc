@@ -6,7 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <algorithm>
-
+#include <seqan/gff_io.h>
 #include "kallisto_util.hpp"
 #include "structs.hpp"
 #include "gff_io.hpp"
@@ -29,39 +29,32 @@ using namespace std;
  */
 int get_index_to_seqid_help(string file, unordered_map<uint64_t, string> &map,
                             uint64_t &transcript_count) {
-    
-    ifstream f(file); // The GTF file.
-    if (!f.is_open()) {
+    string prev_ref = "", prev_transcript_id = "";
+    seqan::GffFileIn gff;
+    if (!seqan::open(gff, file.c_str())) {
         return 1;
     }
-    
-    string inp; // A line in the file. For use with getline.
-    string prev_seqname = "", prev_id = "";
-    
-    while (getline(f, inp)) {
-        // Parse input and put information in seq.
-        inp = lower(inp);
-        Sequence seq = get_sequence(inp);
-        
-        // If the sequence was properly read and it's an exon...
-        if (seq.start != -1 && seq.seqname.size() != 0
-            && seq.feature.compare("exon") == 0) {
-            
-            // If it's a new transcript, increment transcript_count.
-            if (prev_seqname.compare(seq.seqname) != 0
-                || prev_id.compare(seq.id) != 0) {
-                
-                ++transcript_count;
-                prev_seqname = seq.seqname;
-                prev_id = seq.id;
+    seqan::GffRecord rec;
+    while(!seqan::atEnd(gff)) {
+        seqan::readRecord(rec, gff);
+        if (string(seqan::toCString(rec.ref)).compare(".") != 0
+            && lower(seqan::toCString(rec.type)).compare("exon") == 0) {
+            string transcript_id = "";
+            for (int i = 0; i < length(rec.tagNames); ++i) {
+                if (lower(seqan::toCString(rec.tagNames[i])).compare(
+                            "transcript_id") == 0) {
+                    transcript_id = lower(seqan::toCString(rec.tagValues[i]));
+                }
             }
-            
-            // Add it to the map!
-            map.emplace(transcript_count, seq.id);
+            if (prev_ref.compare(lower(seqan::toCString(rec.ref))) != 0
+                    || prev_transcript_id.compare(transcript_id) != 0) {
+                ++transcript_count;
+                prev_ref = lower(seqan::toCString(rec.ref));
+                prev_transcript_id = transcript_id;
+            }
+            map.emplace(transcript_count, transcript_id);
         }
     }
-    
-    f.close();
     return 0;
 }
 

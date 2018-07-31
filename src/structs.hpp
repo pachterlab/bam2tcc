@@ -13,18 +13,6 @@
 #define PARSE_FAILED 0xFFFF  // Read failed if read.pos is this number.
 
 /**
- * Corresponds to a sequence in a GTF file. See GTF documentation for more
- * detail on each member.
- */
-struct Sequence {
-    int start;          /*< Start index of sequence. 1-indexed. */
-    int end;            /*< End index of sequence. 1-indexed. */
-    std::string seqname; /*< Chromosome or scaffold of sequence. */
-    std::string feature; /*< Feature type, e.g. exon, transcript. */
-    std::string id;      /*< Transcript ID, as indicated in attribute field. */
-};
-
-/**
  * Corresponds to an exon.
  */
 struct Exon {
@@ -53,13 +41,6 @@ struct Exon {
      * fields with relevant information, not including transcripts.
      * @param seq       Sequence from which to copy information.
      */
-    Exon(Sequence &seq) {
-        start = seq.start;
-        end = seq.end;
-        seqname = seq.seqname;
-        transcripts = new std::vector<int>;
-    }
-
     Exon(seqan::GffRecord &rec) {
         start = rec.beginPos;
         end = rec.endPos;
@@ -88,20 +69,5 @@ struct Exon {
     }
 };
 
-/**
- * Corresponds to an entry for a read in a SAM file. This is not necessarily
- * one entire read, since a single (multi-mapping) read may have multiple
- * entries. See SAM documentation for more detail on each member.
- */
-struct Read {
-    int flag;           /*< Flag indicating some special status of entry. */
-    uint32_t pos;           /*< Start index of entry. 1-indexed. */
-    uint32_t end;           /*< End index of entry. Not necessarily equal to
-                         pos + (read length), since base pairs may have been
-                         deleted, spliced, etc. */
-    std::string qname;  /*< Chromosome or scaffold of entry. */
-    std::string rname;  /*< Name of read represented by this entry. */
-    std::string cigar;  /*< CIGAR string. See documentation for details. */
-};
-
 #endif
+

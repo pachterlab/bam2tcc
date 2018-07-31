@@ -12,11 +12,6 @@
 #define MIN_UPDATE 1000000
 #define USING_GTF 1
 
-std::vector<int> get_eq(
-        const std::vector<std::vector<Exon>*> &exons, Read &read);
-
-void get_read(std::string info, Read &read);
-
 int readSAM(std::string file, int filenumber,
              std::vector<std::vector<Exon>*> &exons, TCC_Matrix &matrix,
              std::string unmatched_outfile, int verbose, int nthreads);

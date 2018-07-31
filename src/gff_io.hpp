@@ -12,8 +12,6 @@
 #define MIN_UPDATE 1000000
 #define USING_GTF 1
 
-Sequence get_sequence(std::string info);
-
 int readGFFs(std::vector<std::string> &files,
              std::vector<std::string> &transcriptome,
              std::vector<std::vector<Exon>*> &exons, int verbose);
