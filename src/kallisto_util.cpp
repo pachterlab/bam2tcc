@@ -193,7 +193,7 @@ int get_index_to_kallisto_index(const vector<string> &gtf,
                                 int verbose) {
    
     if (verbose) {
-        cout << "  Reading transcriptome...";
+        cout << "  Reading transcriptome..." << flush;
     }
 
     // Map from index to transcript_id, which should match...

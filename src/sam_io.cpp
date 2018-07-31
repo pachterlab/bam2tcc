@@ -1,11 +1,10 @@
 /**
- * readGTFs and readSAMs plus helper functions. See structs.hpp for more info
- * about the structs used.
+ * Functions for reading SAM/BAM files.
  */
 
 #include <iostream>
-#include <algorithm>
-#include <future>
+#include <algorithm>      /* set_intersection, sort, unique */
+#include <future>         /* Multithreading */
 #include <seqan/bam_io.h>
 #include "sam_io.hpp"
 #include "util.hpp"
@@ -15,12 +14,33 @@ using namespace std;
 typedef seqan::FormattedFileContext<seqan::BamFileIn, void>::Type TBamContext;
 
 /**
+ * @brief Get total number of reads in a SAM/BAM file.
+ * @param filename  Name of query SAM/BAM file
+ * @return          Number of lines in file
+ */
+int get_sam_line_count(string filename) {
+    seqan::BamFileIn bam;
+    if (!seqan::open(bam, filename.c_str())) {
+        return -1;
+    }
+    seqan::BamHeader head;
+    seqan::readHeader(head, bam);
+    seqan::BamAlignmentRecord rec;
+    int line_count = 0;
+    while (!atEnd(bam)) {
+        ++line_count;
+        seqan::readRecord(rec, bam);
+    }
+    return line_count;
+}
+
+/**
  * @brief Gets "exons" of a read.
  *
  * Looks at CIGAR string to determine where a read was split up across different
  * exons, and returns a vector containing the exons of the read.
  *
- * @param r         Read to examine. CIGAR string should be entirely lowercase.
+ * @param r         Read to examine.
  * @return          Vector of exons
  */
 vector<Exon> get_read_exon_positions(seqan::BamAlignmentRecord &r) {
@@ -80,10 +100,11 @@ void get_read_exon_transcripts(const vector<Exon> &chrom,
  *
  * @param read      Read struct containing information about read.
  *
- * @return          String representation of equivalence class. Comma-separated,
- * no spaces. Transcripts are described by an index which corresponds either to
- * where it showed up in the GTFs, or to where it shows up in the FASTA
- * transcriptome file if that option was used. See readGTFs for more info.
+ * @return          Vector containing the transcripts composing the equivalence
+ * class.  Transcripts are described by an index which corresponds either to
+ * where it showed up in the GFF(s), or to where it shows up in the FASTA
+ * transcriptome file if that option was used. See readGFFs in gff_io.cpp for
+ * more info.
  */
 vector<int> get_eq(const vector<vector<Exon>*> &exons, TBamContext &cont,
         seqan::BamAlignmentRecord rec) {
@@ -128,18 +149,36 @@ vector<int> get_eq(const vector<vector<Exon>*> &exons, TBamContext &cont,
 }
 
 /**
- * @brief Reads input SAM file and populates vector eqs with equivalence class
- * counts based on the annotated GTF sequences in vector seqs. Prints error
- * message if file cannot be opened.
+ * @brief Reads input SAM file and populates `matrix` with TCC counts.
+ * Prints error message if file cannot be opened.
  *
- * @param[in] file      Name of SAM file containing information about reads
+ * @param file              Name of SAM/BAM file. 
  *
- * @param[in] seqs      Vector containing information on annotated sequences.
- * Sequences should at least contain an ID, a start index, and an end index.
+ * @param filenumber        "Number" of this SAM/BAM file corresponding to the
+ * order in which query SAM/BAM files were entered into command line.
  *
- * @param[in, out] eqs  (Empty) vector to populate with information about
- * equivalence classes. New Equivalence_Class structs will be allocated as
- * necessary.
+ * @param start             The number of the read in this file to start at.
+ *
+ * @param end               The number of the read in this file to stop at. This
+ * read (read # ${end}) will not be read.
+ *
+ * @param thread            Number describing which thread runs this function.
+ * For debugging purposes.
+ *
+ * @param exons             Vector containing information from GFF. (See
+ * readGFFs in gff_io.cpp for more info.
+ *
+ * @param matrix            The TCC matrix to populate with information about
+ * TCC counts for this SAM/BAM file.
+ *
+ * @param unmatched_outfile The name of the file to which to write unmatched
+ * reads.
+ *
+ * @param sem               Semaphore to control terminal output when multiple
+ * threads are in use.
+ *
+ * @postcondition           `matrix` is populated with information about TCC
+ * counts of reads in given SAM/BAM file.
  *
  * @return -1 if file fails to open, else 0
  */
@@ -147,16 +186,10 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
             vector<vector<Exon>*> &exons, TCC_Matrix &matrix,
             string unmatched_outfile, int verbose, Semaphore &sem) {
 
-    uint64_t line_count = 0;
-    if (end == 0) {
-        end = get_line_count(file);
-    }
-    uint64_t lines = end - start;
-    uint64_t ten_percent = lines / 10;
-    if (lines <= 0) {
+    if (end - start <= 1) {
         return -1;
     }
-
+    uint64_t line_count = 0;
     seqan::BamFileIn bam;
     if (!seqan::open(bam, file.c_str())) {
         sem.dec();
@@ -172,7 +205,6 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
     seqan::BamHeader header;
     seqan::readHeader(header, bam);
     TBamContext cont = context(bam);
-
     /* Read in the first line. */
     if (start == 0) {
         ++line_count;
@@ -195,26 +227,25 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
     }
     string qName = seqan::toCString(rec.qName);
     vector<int> eq;
-    if (seqan::hasFlagMultiple(rec)) {
-        ++line_count;
-        seqan::readRecord(rec2, bam);
-        if (!seqan::hasFlagUnmapped(rec) && !seqan::hasFlagUnmapped(rec2)) { 
-            /* eq = intersect(get_eq(rec), get_eq(rec2)) */
-            /* get_eq returns a sorted vector, so no need to sort here. */
-            vector<int> temp1 = get_eq(exons, cont, rec);
-            vector<int> temp2 = get_eq(exons, cont, rec2);
-            set_intersection(temp1.begin(), temp1.end(),
-                    temp2.begin(), temp2.end(), back_inserter(eq));
-            /* Remove duplicates. eq is already sorted. */
-            eq.erase(unique(eq.begin(), eq.end()), eq.end());
+    if (!seqan::hasFlagUnmapped(rec)) {
+        if (seqan::hasFlagMultiple(rec)) {
+            ++line_count;
+            seqan::readRecord(rec2, bam);
+            if (!seqan::hasFlagUnmapped(rec2)) { 
+                /* eq = intersect(get_eq(rec), get_eq(rec2)) */
+                /* get_eq returns a sorted vector, so no need to sort here. */
+                vector<int> temp1 = get_eq(exons, cont, rec);
+                vector<int> temp2 = get_eq(exons, cont, rec2);
+                set_intersection(temp1.begin(), temp1.end(),
+                        temp2.begin(), temp2.end(), back_inserter(eq));
+                /* Remove duplicates. eq is already sorted. */
+                eq.erase(unique(eq.begin(), eq.end()), eq.end());
+            }
         }
-    } else {
-        if (!seqan::hasFlagUnmapped(rec)) {
+        else {
             eq = get_eq(exons, cont, rec);
         }
     }
-
-    /* Start looping through the rest of the file. */
     int unmatched = 0;
     while (!atEnd(bam)) {
         ++line_count;
@@ -223,7 +254,7 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
         /* If this is a new read (i.e. new qName), enter the TCC of the previous
          * one into the matrix. */
         if (qName.compare(seqan::toCString(rec.qName)) != 0) {
-            if (line_count >= end) {
+            if (!atEnd(bam) && line_count >= end) {
                 break;
             }
             if (eq.size() == 0) {
@@ -240,10 +271,6 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
         }
 
         if (seqan::hasFlagUnmapped(rec)) {
-            if (seqan::hasFlagMultiple(rec)) {
-                ++line_count;
-                seqan::readRecord(rec2, bam);
-            }
             continue;
         }
         vector<int> temp_eq = get_eq(exons, cont, rec);
@@ -293,19 +320,22 @@ int readSAM(string file, int filenumber,
    
     vector<future<int>> unmatched;
     Semaphore sem;
-        int lines = get_line_count(file);
-        for (int j = 0; j < nthreads - 1; ++j) {
-            unmatched.push_back(async(launch::async, &readSAMHelp,
-                    file, filenumber,
-                    lines / nthreads * j, lines / nthreads * (j + 1), j,
-                    ref(exons), ref(matrix), unmatched_outfile, verbose,
-                    ref(sem)));
-        }
+    int lines = get_sam_line_count(file);
+    if (lines == -1) {
+        cerr << "  ERROR: failed to open " << file << endl;
+    }
+    for (int j = 0; j < nthreads - 1; ++j) {
         unmatched.push_back(async(launch::async, &readSAMHelp,
                 file, filenumber,
-                lines / nthreads * (nthreads - 1), 0, nthreads - 1,
+                lines / nthreads * j, lines / nthreads * (j + 1), j,
                 ref(exons), ref(matrix), unmatched_outfile, verbose,
                 ref(sem)));
+    }
+    unmatched.push_back(async(launch::async, &readSAMHelp,
+            file, filenumber,
+            lines / nthreads * (nthreads - 1), lines, nthreads - 1,
+            ref(exons), ref(matrix), unmatched_outfile, verbose,
+            ref(sem)));
 
     int total_unmatched = 0;
     for (int i = 0; i < unmatched.size(); ++i) {

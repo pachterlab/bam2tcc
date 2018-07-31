@@ -40,7 +40,7 @@ int readGFF(string file, unordered_map<uint64_t, uint64_t> index_map,
             vector<vector<Exon>*> &exons, uint64_t &transcript_count,
             int verbose) {
      
-    cout << "  Reading " << file << "..." << flush;
+    cout << "  Reading " << file << "... " << flush;
     
     string prev_ref = "", prev_transcript_id = "";
     unordered_map<string, Exon> chrom;
