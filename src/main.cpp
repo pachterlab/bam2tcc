@@ -10,7 +10,7 @@
 #include <seqan/gff_io.h>     /* Test-open of GFF and SAM files */
 #include <seqan/bam_io.h>
 
-#include "structs.hpp"
+#include "exon.hpp"
 #include "gff_io.hpp"
 #include "sam_io.hpp"
 #include "util.hpp"

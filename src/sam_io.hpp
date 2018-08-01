@@ -1,10 +1,10 @@
-#ifndef SAM_IO_HPP
-#define SAM_IO_HPP
+#ifndef __SAM_IO_HPP__
+#define __SAM_IO_HPP__
 
 #include <string>
 #include <vector>
 
-#include "structs.hpp"
+#include "exon.hpp"
 #include "TCC_Matrix.hpp"
 #include "semaphore.hpp"
 

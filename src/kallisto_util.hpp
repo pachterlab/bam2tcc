@@ -3,8 +3,8 @@
  * kallisto's.
  */
 
-#ifndef kallisto_util_h
-#define kallisto_util_h
+#ifndef __KALLISTO_UTIL_HPP__
+#define __KALLISTO_UTIL_HPP__
 
 #include <vector>
 #include <string>

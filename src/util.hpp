@@ -2,8 +2,8 @@
  * Various general utility functions.
  */
 
-#ifndef util_hpp
-#define util_hpp
+#ifndef __UTIL_HPP__
+#define __UTIL_HPP__
 
 #include <string>
 #include <vector>
@@ -22,4 +22,5 @@ std::vector<uint64_t> parse_csv_ints(std::string csv);
 
 int test_open(std::string filename, int mode = 0);
 
-#endif /* common_h */
+#endif
+

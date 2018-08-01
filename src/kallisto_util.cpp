@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <seqan/gff_io.h>
 #include "kallisto_util.hpp"
-#include "structs.hpp"
+#include "exon.hpp"
 #include "gff_io.hpp"
 #include "util.hpp"
 

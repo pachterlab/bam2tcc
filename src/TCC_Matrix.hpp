@@ -1,5 +1,5 @@
-#ifndef tcc_matrix_hpp
-#define tcc_matrix_hpp
+#ifndef __TCC_MATRIX_HPP__
+#define __TCC_MATRIX_HPP__
 
 #include <unordered_map>
 #include <set>

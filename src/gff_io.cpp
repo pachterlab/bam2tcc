@@ -53,11 +53,6 @@ int readGFF(string file, unordered_map<uint64_t, uint64_t> index_map,
     unordered_map<string, Exon> chrom;
     
     uint64_t line_count = 0;
-    uint64_t lines = get_line_count(file);
-    if (lines == -1) {
-        return 1;
-    }
-    uint64_t ten_percent = lines / 10;
     
     seqan::GffFileIn gff;
     if (!seqan::open(gff, file.c_str())) {
@@ -67,11 +62,7 @@ int readGFF(string file, unordered_map<uint64_t, uint64_t> index_map,
     while(!seqan::atEnd(gff)) {
         ++line_count;
         seqan::readRecord(rec, gff);
-#if 0
-        if (verbose && lines > MIN_UPDATE && line_count % ten_percent == 0) {
-            cout << "    " << line_count / ten_percent << "0% done" << endl;
-        }
-#endif   
+        
         if (string(seqan::toCString(rec.ref)).compare(".")  == 0) {
             if (verbose) {
                 cerr << endl << "    WARNING: Line " << line_count;

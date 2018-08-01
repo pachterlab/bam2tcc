@@ -4,7 +4,6 @@
 
 #include "util.hpp"
 #include <fstream>      // file i/o
-#include "structs.hpp"
 using namespace std;
 
 /**
