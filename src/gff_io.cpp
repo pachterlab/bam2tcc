@@ -1,3 +1,6 @@
+/**
+ * Functions for reading GFF files.
+ */
 #include <seqan/gff_io.h>
 #include "gff_io.hpp"
 #include "util.hpp"
@@ -5,7 +8,7 @@
 using namespace std;
 
 /**
- * @brief Returns a vector allocated on the heap containing all exons in map.
+ * @brief Returns a vector containing all exons (values) in map.
  *
  * @param m     Map containing exons to place in vector.
  * @return      Vector containing exons.
@@ -20,21 +23,25 @@ vector<Exon> *map_values(unordered_map<string, Exon> &m) {
 }
 
 /**
- * @brief Reads annotated sequences in (GTF) file. Attribute (9th) field should
- * contain "transcript_id: " followed by the transcript ID with no spaces.
+ * @brief Reads a GFF file and fills `exons` appropriately.
  *
  * Note: assumes that information about a single chromosome/scaffold will not
- * be spread across multiple GTF files.
+ * be spread across multiple GFF files.
  *
- * @param file                  name of (GTF) file containing annotated
- *                              sequences
- * @param transcripts           (empty) vector to fill with sequence information
- * @param verbose               if 1, output warning messages to std::cerr
- * @param seq_count_start       number at which to start indexing transcripts.
- *                              if this is the first GTF, it should be 0, else
- *                              wherever the last GTF stopped
+ * @param file                  Name of GFF file containing annotated sequences.
  *
- * @return                      1 if file fails to open, else 0
+ * @param index_map             A map from transcripts' indices in GFF file to
+ * transcripts' indices in transcriptome file. See get_index_to_kallisto_index
+ * in kallisto_util.cpp. Optional.
+ *
+ * @param exons                 Vector to be filled with information in GFF.
+ *
+ * @param seq_count_start       Number at which to start indexing transcripts.
+ * If this is the first GFF, it should be 0, else wherever the last GTF stopped.
+ *
+ * @param verbose               If 1, output warning messages to std::cerr.
+ *
+ * @return                      1 if file fails to open, else 0.
  */
 int readGFF(string file, unordered_map<uint64_t, uint64_t> index_map,
             vector<vector<Exon>*> &exons, uint64_t &transcript_count,
@@ -152,6 +159,21 @@ int readGFF(string file, unordered_map<uint64_t, uint64_t> index_map,
     return 0;
 }
 
+/**
+ * @brief Read in all GFF files named in vector `files`.
+ *
+ * @param files         Vector containing the names of query GFF files.
+ *
+ * @param transcriptome Vector containing the names of query transcriptome
+ * files. If non-empty, readGFFs will use the transcript indexing in the
+ * transcriptome files. If multiple files are provided, the first transcript
+ * of the first file is index 0, and the indexing of remainng files start
+ * where the previous one left off.
+ *
+ * @param exons                 Vector to be filled with information in GFFs.
+ *
+ * @param verbose               If 1, output warning messages to std::cerr.
+ */
 int readGFFs(vector<string> &files, vector<string> &transcriptome,
              vector<vector<Exon>*> &exons, int verbose) {
     // 0-index the transcript counts. This will make count start at 0.
