@@ -162,7 +162,7 @@ uint64_t get_id_to_kallisto_index(const vector<string> &files,
                                                 transcript_count);
         if (ret == 1) {
             cerr << "  ERROR: could not read " << files[i] << endl;
-            return -1;
+            return 1;
         }
     }
     
@@ -211,7 +211,7 @@ int get_index_to_kallisto_index(const vector<string> &gtf,
     // Save where we left off, so we can appropriately index those transcripts
     // which appear in the GTF but not in the transcriptome.
     uint64_t index = get_id_to_kallisto_index(transcriptome, *m2);
-    if (index == -1) {
+    if (index == 1) {
         // Again, it prints its own error message.
         return 1;
     }

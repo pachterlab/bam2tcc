@@ -1,7 +1,13 @@
 # Thing!
 Code that takes the SAM/BAM files output by genome alignment programs and
 outputs TCC matrix like those output by [**kallisto**](https://pachterlab.github.io/kallisto/).
-So far has only been used on Mac OS X and Linux. (I'm pretty sure it's Linux.)
+So far has only been used on Mac OS X and Linux.
+
+## Installation
+Binaries may eventually be provided. For now, they will have to be compiled from
+the source code.
+
+## Dependencies
 
 ## Making the executable
 The code is compiled with the g++ compiler. Install it if you don't have it.
@@ -11,8 +17,22 @@ Clone repository:
     $ git clone https://github.com/laureneliu/tcc-from-alignment ~/clone/path
 ```
 
-Go to `~/clone/path`, wherever that may be. Make two new directories, `obj/` and
-`bin/` with `mkdir obj/ bin/`.
+GFF and SAM/BAM I/O uses parts of the SeqAn(https://www.seqan.de/) library.
+Follow instructions here(http://seqan.readthedocs.io/en/master/Infrastructure/Use/Install.html)
+to download. Or, change into ~/clone/path/tcc-from-alignment and run:
+
+```
+    $ wget http://packages.seqan.de/seqan-library/seqan-library-2.4.0.tar.xz
+    $ tar -xf seqan-library-2.4.0.tar.xz
+    $ mv seqan-library-2.4.0/include ./
+```
+
+Depending on where the seqan folder is and what it is named, you may have to go
+into the Makefile and change the `SEQAN_PATH` variable at the top of the
+Makefile to lead to the seqan folder.
+
+Go to `~/clone/path/tcc-from-alignment`, wherever that may be. Make two new
+directories, `obj/` and `bin/` with `mkdir obj/ bin/`.
 
 In the source directory, run `make`. The executable is `~/clone/path/bin/main`.
 

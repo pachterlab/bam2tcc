@@ -231,7 +231,11 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
         if (seqan::hasFlagMultiple(rec)) {
             ++line_count;
             seqan::readRecord(rec2, bam);
-            if (!seqan::hasFlagUnmapped(rec2)) { 
+            if (!seqan::hasFlagUnmapped(rec2) && seqan::hasFlagAllProper(rec)
+                    && ((seqan::hasFlagRC(rec) && !seqan::hasFlagRC(rec2))
+                    || (!seqan::hasFlagRC(rec) && seqan::hasFlagRC(rec2)))
+                    && seqan::hasFlagFirst(rec) && seqan::hasFlagLast(rec2))
+            {
                 /* eq = intersect(get_eq(rec), get_eq(rec2)) */
                 /* get_eq returns a sorted vector, so no need to sort here. */
                 vector<int> temp1 = get_eq(exons, cont, rec);
@@ -277,9 +281,11 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
         if (seqan::hasFlagMultiple(rec)) {   
             ++line_count;
             seqan::readRecord(rec2, bam);
-            if (seqan::hasFlagUnmapped(rec2)) {
-                continue;
-            } else {
+            if (!seqan::hasFlagUnmapped(rec2) && seqan::hasFlagAllProper(rec)
+                    && ((seqan::hasFlagRC(rec) && !seqan::hasFlagRC(rec2))
+                    || (!seqan::hasFlagRC(rec) && seqan::hasFlagRC(rec2)))
+                    && seqan::hasFlagFirst(rec) && seqan::hasFlagLast(rec2))
+            {
                 /* temp_eq = intersect(temp_eq, get_eq(rec2)) */
                 vector<int> temp1 = get_eq(exons, cont, rec2);
                 vector<int> temp2;
@@ -289,6 +295,8 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
                 /* Remove duplicates. temp_eq is already sorted. */
                 temp_eq.erase(unique(temp_eq.begin(), temp_eq.end()),
                     temp_eq.end());
+            } else {
+                continue;
             }
         }
         /* eq = union(eq, temp_eq) */

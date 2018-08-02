@@ -1,9 +1,11 @@
+SEQAN_PATH = /opt/local/bin/seqan
+
 SRCDIR = src
 OBJDIR = obj
 BINDIR = bin
 
 CXX = g++
-CXXFLAGS = -g -I/opt/local/bin/seqan/include -Wall -pedantic -ansi --std=c++14 
+CXXFLAGS = -g -I$(SEQAN_PATH)/include -Wall -pedantic -ansi --std=c++14 
 
 EXENAME = main
 
