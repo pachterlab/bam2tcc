@@ -149,7 +149,7 @@ vector<int> get_eq(const vector<vector<Exon>*> &exons, TBamContext &cont,
 }
 
 /**
- * @brief Reads input SAM file and populates `matrix` with TCC counts.
+ * @brief Reads input SAM/BAM file and populates `matrix` with TCC counts.
  * Prints error message if file cannot be opened.
  *
  * @param file              Name of SAM/BAM file. 
@@ -325,7 +325,9 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
 int readSAM(string file, int filenumber,
              vector<vector<Exon>*> &exons, TCC_Matrix &matrix,
              string unmatched_outfile, int verbose, int nthreads) {
-   
+
+    cout << "Reading " << file << "..." << endl;
+
     vector<future<int>> unmatched;
     Semaphore sem;
     int lines = get_sam_line_count(file);

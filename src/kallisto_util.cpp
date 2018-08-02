@@ -27,8 +27,8 @@ using namespace std;
  * @param transcript_count  Number at which to start indexing this file.
  * @return                  1 if file fails to open, otherwise 0.
  */
-int get_index_to_seqid_help(string file, unordered_map<uint64_t, string> &map,
-                            uint64_t &transcript_count) {
+int get_index_to_seqid_help(string file, unordered_map<int, string> &map,
+                            int &transcript_count) {
     string prev_ref = "", prev_transcript_id = "";
     seqan::GffFileIn gff;
     if (!seqan::open(gff, file.c_str())) {
@@ -78,14 +78,12 @@ int get_index_to_seqid_help(string file, unordered_map<uint64_t, string> &map,
  * @return          1 if a file fails to open, otherwise 0.
  */
 int get_index_to_seqid(const vector<string> &files,
-                       unordered_map<uint64_t, string> &map) {
+                       unordered_map<int, string> &map) {
     
-    // 0-indexed transcript counts. This will start count at 0. We do it this
-    // way to match how we do it in readGTF, where it's necessary that we start
-    // it at -1.
-    uint64_t transcript_count = -1;
+    /* 0-indexed transcript counts. This will start count at 0. */
+    int transcript_count = -1;
     
-    for (uint i = 0; i < files.size(); ++i) {
+    for (int i = 0; i < files.size(); ++i) {
         int ret = get_index_to_seqid_help(files[i], map, transcript_count);
         if (ret == 1) {
             cerr << "  ERROR: could not read " << files[i] << endl;
@@ -107,8 +105,8 @@ int get_index_to_seqid(const vector<string> &files,
  * @return                  1 if file fails to open, otherwise 0.
  */
 int get_id_to_kallisto_index_help(string file,
-                                  unordered_map<string, uint64_t> &map,
-                                  uint64_t &transcript_count) {
+                                  unordered_map<string, int> &map,
+                                  int &transcript_count) {
     ifstream f(file);
     if (!f.is_open()) {
         return 1;
@@ -125,6 +123,10 @@ int get_id_to_kallisto_index_help(string file,
         inp = lower(inp);
         int start = inp.find(TRANSCRIPT_NAME_START_CHAR) + 1;
         int end = inp.find(TRANSCRIPT_NAME_END_CHAR, start);
+        if (start == string::npos || end == string::npos) {
+            cerr << "  ERROR: unexpected input" << endl;
+            return 1;
+        }
         map.emplace(inp.substr(start, end - start), transcript_count);
     }
     
@@ -150,18 +152,18 @@ int get_id_to_kallisto_index_help(string file,
  *
  * @return                  1 if file fails to open, otherwise 0.
  */
-uint64_t get_id_to_kallisto_index(const vector<string> &files,
-                             unordered_map<string, uint64_t> &map) {
+int get_id_to_kallisto_index(const vector<string> &files,
+                             unordered_map<string, int> &map) {
     
     // 0-indexed transcript counts. This will make count start at 0. We do it
     // this way to match the way readGTF does it.
-    uint64_t transcript_count = -1;
+    int transcript_count = -1;
     
-    for (uint i = 0; i < files.size(); ++i) {
+    for (int i = 0; i < files.size(); ++i) {
         int ret = get_id_to_kallisto_index_help(files[i], map,
                                                 transcript_count);
         if (ret == 1) {
-            cerr << "  ERROR: could not read " << files[i] << endl;
+            cerr << endl << "  ERROR: could not read " << files[i] << endl;
             return 1;
         }
     }
@@ -189,7 +191,7 @@ uint64_t get_id_to_kallisto_index(const vector<string> &files,
  */
 int get_index_to_kallisto_index(const vector<string> &gtf,
                                 const vector<string> &transcriptome,
-                                unordered_map<uint64_t, uint64_t> &map,
+                                unordered_map<int, int> &map,
                                 int verbose) {
    
     if (verbose) {
@@ -197,7 +199,7 @@ int get_index_to_kallisto_index(const vector<string> &gtf,
     }
 
     // Map from index to transcript_id, which should match...
-    unordered_map<uint64_t, string> *m1 = new unordered_map<uint64_t, string>;
+    unordered_map<int, string> *m1 = new unordered_map<int, string>;
     int err = get_index_to_seqid(gtf, *m1);
     if (err == 1) {
         // get_index_to_seqid prints its own error message, since it knows which
@@ -207,10 +209,10 @@ int get_index_to_kallisto_index(const vector<string> &gtf,
     
     // ... the transcript IDs in the FASTA files, which are mapped here to the
     // kallisto index.
-    unordered_map<string, uint64_t> *m2 = new unordered_map<string, uint64_t>;
+    unordered_map<string, int> *m2 = new unordered_map<string, int>;
     // Save where we left off, so we can appropriately index those transcripts
     // which appear in the GTF but not in the transcriptome.
-    uint64_t index = get_id_to_kallisto_index(transcriptome, *m2);
+    int index = get_id_to_kallisto_index(transcriptome, *m2);
     if (index == 1) {
         // Again, it prints its own error message.
         return 1;
@@ -230,13 +232,13 @@ int get_index_to_kallisto_index(const vector<string> &gtf,
     // A place to store GTF transcripts with no match in the transcriptome
     // files. Since we don't know how many to expect, and it can be as high as
     // the number of total transcripts in the GTF files, we'll use the heap.
-    vector<uint64_t> *unfound = new vector<uint64_t>;
+    vector<int> *unfound = new vector<int>;
     
     // Now, we want to get all of this information into one map. Iterate through
     // m1, since only want to look at the transcripts in the GTFs. If m2, the
     // transcriptome map, has more entries, we don't need to do anything with
     // them.
-    for (unordered_map<uint64_t, string>::iterator it = m1->begin();
+    for (unordered_map<int, string>::iterator it = m1->begin();
          it != m1->end(); ++it) {
         
         if (m2->find(it->second) == m2->end()) {
@@ -287,12 +289,12 @@ int change_index(const vector<string> &gtf, const vector<string> &transcriptome,
     }
     
     /* Get maps */
-    unordered_map<uint64_t, string> *m1 = new unordered_map<uint64_t, string>;
+    unordered_map<int, string> *m1 = new unordered_map<int, string>;
     int err = get_index_to_seqid(gtf, *m1);
     if (err == 1) {
         return 1;
     }
-    unordered_map<string, uint64_t> *m2 = new unordered_map<string, uint64_t>;
+    unordered_map<string, int> *m2 = new unordered_map<string, int>;
     err = get_id_to_kallisto_index(transcriptome, *m2);
     if (err == 1) {
         return 1;

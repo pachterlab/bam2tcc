@@ -37,22 +37,22 @@ vector<Exon> *map_values(unordered_map<string, Exon> &m) {
  * @param exons                 Vector to be filled with information in GFF.
  *
  * @param seq_count_start       Number at which to start indexing transcripts.
- * If this is the first GFF, it should be 0, else wherever the last GTF stopped.
+ * If this is the first GFF, it should be 0, else wherever the last GFF stopped.
  *
  * @param verbose               If 1, output warning messages to std::cerr.
  *
  * @return                      1 if file fails to open, else 0.
  */
-int readGFF(string file, unordered_map<uint64_t, uint64_t> index_map,
-            vector<vector<Exon>*> &exons, uint64_t &transcript_count,
+int readGFF(string file, unordered_map<int, int> index_map,
+            vector<vector<Exon>*> &exons, int &transcript_count,
             int verbose) {
      
-    cout << "  Reading " << file << "... " << flush;
+    cout << "  Reading " << file << "..." << flush;
     
     string prev_ref = "", prev_transcript_id = "";
     unordered_map<string, Exon> chrom;
     
-    uint64_t line_count = 0;
+    int line_count = 0;
     
     seqan::GffFileIn gff;
     if (!seqan::open(gff, file.c_str())) {
@@ -90,12 +90,15 @@ int readGFF(string file, unordered_map<uint64_t, uint64_t> index_map,
                     prev_transcript_id = transcript_id;
                 }
                 
-                uint64_t id;
+                int id;
                 if (!index_map.empty()) {
                     try {
                         id = index_map.at(transcript_count);
                     }
                     catch (out_of_range &err) {
+                        /* This shouldn't happen. If it does, it indicates a bug
+                         * in the get_index_to_kallisto_index function in
+                         * kallisto_util.cpp. */
                         id = -1;
                         cerr << endl << "    WARNING: unable to map GFF ";
                         cerr << "transcript " << transcript_count;
@@ -120,12 +123,15 @@ int readGFF(string file, unordered_map<uint64_t, uint64_t> index_map,
                 ++transcript_count;
                 prev_transcript_id = transcript_id;
                 
-                uint64_t id;
+                int id;
                 if (!index_map.empty()) {
                     try {
                         id = index_map.at(transcript_count);
                     }
                     catch (out_of_range &err) {
+                        /* This shouldn't happen. If it does, it indicates a bug
+                         * in the get_index_to_kallisto_index function in
+                         * kallisto_util.cpp. */
                         id = -1;
                         cerr << endl << "    WARNING: unable to map GFF ";
                         cerr << "transcript " << transcript_count;
@@ -142,7 +148,7 @@ int readGFF(string file, unordered_map<uint64_t, uint64_t> index_map,
         }
     }
     
-    // Add the exons from the last-encountered chromosome/scaffold.
+    /* Add the exons from the last-encountered chromosome/scaffold. */
     if (!chrom.empty()) {
         exons.push_back(map_values(chrom));
     }
@@ -164,26 +170,30 @@ int readGFF(string file, unordered_map<uint64_t, uint64_t> index_map,
  * @param exons                 Vector to be filled with information in GFFs.
  *
  * @param verbose               If 1, output warning messages to std::cerr.
+ *
+ * @return                      1 if error occurs, else 0.
  */
 int readGFFs(vector<string> &files, vector<string> &transcriptome,
              vector<vector<Exon>*> &exons, int verbose) {
-    // 0-index the transcript counts. This will make count start at 0.
-    uint64_t transcript_count = -1;
+
+    cout << "Reading GFFs..." << endl;
+
+    /* 0-index the transcript counts. This will make count start at 0. */
+    int transcript_count = -1;
     
-    // Map from this program's transcript indexing to kallisto's.
-    unordered_map<uint64_t, uint64_t> *index_map
-    = new unordered_map<uint64_t, uint64_t>;
+    /* Map from this program's transcript indexing to kallisto's. */
+    unordered_map<int, int> *index_map = new unordered_map<int, int>;
     
     if (transcriptome.size() != 0) {
         int ret = get_index_to_kallisto_index(files, transcriptome, *index_map,
                                               verbose);
         if (ret == 1) {
-            // It prints its own error message, so just return 1.
+            /* It prints its own error message, so just return 1. */
             return 1;
         }
     }
     
-    for (uint i = 0; i < files.size(); ++i) {
+    for (int i = 0; i < files.size(); ++i) {
         int ret = readGFF(files[i], *index_map, exons,
                           transcript_count, verbose);
         if (ret == 1) {
@@ -193,6 +203,6 @@ int readGFFs(vector<string> &files, vector<string> &transcriptome,
     }
     
     delete index_map;
-    
-    return transcript_count;
+    cout << "  done" << endl;
+    return 0;
 }

@@ -7,7 +7,7 @@
 #include <time.h>             // provides total time elapsed
 #include <getopt.h>           // getopt_long to parse commandline args
 #include <set>
-#include <seqan/gff_io.h>     /* Test-open of GFF and SAM files */
+#include <seqan/gff_io.h>     /* Test-open of GFF and SAM/BAM files */
 #include <seqan/bam_io.h>
 
 #include "exon.hpp"
@@ -27,15 +27,15 @@ using namespace std;
  */
 int main(int argc, char **argv) {
     string usage = "Usage:\n  " + string(argv[0]) + " [options]* -g <GTF> ";
-    usage += "-S <SAM> [-o <output>]\n\n";
+    usage += "-S <SAM> [-o <output>]\n";
     usage += "  <GTF>               Comma-separated list of GTF gene ";
     usage +=                       "annotation files\n";
     usage += "  <SAM>               Comma-separated list of ";
-    usage +=                       "sam files containing aligned ";
+    usage +=                       "SAM/BAM files containing aligned ";
     usage +=                       "single-end reads\n";
     usage += "  <output>            Name of output file (defaults to ";
-    usage +=                       "out.ec, out.tsv)\n\n";
-    usage += "Options:\n";
+    usage +=                       "matrix.ec, matrix.tsv, matrix.cells)\n";
+    usage += "\nOptions:\n";
     usage += "  -p, --threads <int>        Max number of threads to use.";
     usage +=                              " Defaults to 1.\n";
     usage += "  -q                         Suppresses some warnings and ";
@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
     string kallisto_ec; // a kallisto EC file, for use if user wants TCC indexes
                         // to match those of this kallisto output
     
-    string out_name = "out", unmatched_out = ""; // default outfile names
+    string out_name = "matrix", unmatched_out = ""; // default outfile names
     // Some booleans
     int err, verbose = 1, unmatched = 0, full = 0;
     int threads = 1;
@@ -181,61 +181,18 @@ int main(int argc, char **argv) {
     vector<vector<Exon>*> *exons = new vector<vector<Exon>*>;
     TCC_Matrix *matrix = new TCC_Matrix(sam_files.size());
 
-    cout << "Reading GTFs... " << endl;
     err = readGFFs(gtf_files, transcriptome_files, *exons, verbose);
     if (err == 1) {
         // No need to print an error message--readGTFs does it for us.
         return 1;
     }
-    cout << "read " << err << " transcripts" <<  endl;
 
-    // TODO: put all this code in its own function! also, you're currently
-    // printing mutliple @HD lines--there can only be one...
-    if (unmatched_out.size() != 0) {
-        cout << "Writing header for unmatched output file... " << flush;
-        ofstream outfile(unmatched_out);
-        if (!outfile.is_open()) {
-            cerr << "ERROR: Failed to open " << unmatched_out << endl;
-            return 1;
-        }
-        for (uint i = 0; i < sam_files.size(); ++i) {
-            ifstream infile(sam_files[i]);
-            if (!infile.is_open()) {
-                cerr << "ERROR: Failed to open " << sam_files[i] << endl;
-                return 1;
-            }
-            string inp;
-            while (getline(infile, inp)) {
-                if (inp.size() < 2) {
-                    continue;
-                }
-                if (inp.substr(0, 3).compare("@HD") == 0) {
-                    outfile << inp << endl;
-                }
-                else if (inp.substr(0, 3).compare("@SQ") == 0) {
-                    outfile << inp << endl;
-                }
-                else {
-                    break;
-                }
-            }
-            infile.close();
-        }
-        outfile << "@PG\tID:[unknown]\tPN:[unknown]\tVN:1.0\tCL:\"";
-        for (int i = 0; i < argc - 1; ++i) {
-            outfile << argv[i] << " ";
-        }
-        outfile << argv[argc - 1] << "\"\n";
-        outfile.close();
-        cout << "done" << endl;
-    }
-    cout << "Reading SAM... " << endl;
+    cout << "Reading SAMs..." << endl;
     for (int i = 0; i < sam_files.size(); ++i) {
         unmatched += readSAM(sam_files[i], i, *exons, *matrix, unmatched_out,
                 verbose, threads);
     }
-    cout << "done" << endl;
-
+    cout << "  done" << endl;
         
     /* Write to output files */
     cout << "Writing to file... " << flush;
@@ -274,9 +231,9 @@ int main(int argc, char **argv) {
         cells.close();
     }
     if (err == 1) {
-        cerr << "ERROR: Failed to open outfile(s) of name " << out_name << endl;
+        cerr << "  ERROR: Failed to open outfile(s) of name " << out_name << endl;
     }
-    cout << "done" << endl;
+    cout << "  done" << endl;
 
 
 

@@ -11,12 +11,12 @@
 #include <unordered_map>
 #include <set>
 
-int get_index_to_seqid(const std::vector<std::string> &files,
-                       std::unordered_map<uint64_t, std::string> &map);
+//int get_index_to_seqid(const std::vector<std::string> &files,
+//                       std::unordered_map<int, std::string> &map);
 
 int get_index_to_kallisto_index(const std::vector<std::string> &gtf,
                             const std::vector<std::string> &transcriptome,
-                            std::unordered_map<uint64_t, uint64_t> &map,
+                            std::unordered_map<int, int> &map,
                             int verbose);
 
 int change_index(const std::vector<std::string> &gtf,
