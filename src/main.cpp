@@ -67,7 +67,7 @@ int main(int argc, char **argv) {
     
     string out_name = "matrix", unmatched_out = ""; // default outfile names
     // Some booleans
-    int err, verbose = 1, unmatched = 0, full = 0;
+    int err, verbose = 1, full = 0;
     int threads = 1;
     time_t start = time(0); // to calculate total runtime
 
@@ -189,7 +189,7 @@ int main(int argc, char **argv) {
 
     cout << "Reading SAMs..." << endl;
     for (int i = 0; i < sam_files.size(); ++i) {
-        unmatched += readSAM(sam_files[i], i, *exons, *matrix, unmatched_out,
+        readSAM(sam_files[i], i, *exons, *matrix, unmatched_out,
                 verbose, threads);
     }
     cout << "  done" << endl;
@@ -262,9 +262,7 @@ int main(int argc, char **argv) {
     if (s.size() == 1) {
         cout << "0";
     }
-    cout << s << '\t';
-
-    cout << "Unmatched reads: " << unmatched << endl; 
+    cout << s << endl;
 
     return 0;
 }

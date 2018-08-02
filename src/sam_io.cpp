@@ -182,7 +182,8 @@ vector<int> get_eq(const vector<vector<Exon>*> &exons, TBamContext &cont,
  *
  * @return -1 if file fails to open, else 0
  */
-int readSAMHelp(string file, int filenumber, int start, int end, int thread,
+int readSAMHelp(string file, int filenumber,
+            int start, int end, int thread,
             vector<vector<Exon>*> &exons, TCC_Matrix &matrix,
             string unmatched_outfile, int verbose, Semaphore &sem) {
 
@@ -193,7 +194,7 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
     seqan::BamFileIn bam;
     if (!seqan::open(bam, file.c_str())) {
         sem.dec();
-        cerr << "  ERROR: failed to open " << file << endl;
+        cerr << "    ERROR: failed to open " << file << endl;
         sem.inc();
         return -1;
     }
@@ -205,6 +206,10 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
     seqan::BamHeader header;
     seqan::readHeader(header, bam);
     TBamContext cont = context(bam);
+    vector<seqan::BamAlignmentRecord> current;
+    seqan::BamFileOut unmatched_out(seqan::context(bam),
+            unmatched_outfile.c_str());
+    
     /* Read in the first line. */
     if (start == 0) {
         ++line_count;
@@ -225,12 +230,14 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
             seqan::readRecord(rec, bam);
         }
     }
+    current.push_back(rec);
     string qName = seqan::toCString(rec.qName);
     vector<int> eq;
     if (!seqan::hasFlagUnmapped(rec)) {
         if (seqan::hasFlagMultiple(rec)) {
             ++line_count;
             seqan::readRecord(rec2, bam);
+            current.push_back(rec2);
             if (!seqan::hasFlagUnmapped(rec2) && seqan::hasFlagAllProper(rec)
                     && ((seqan::hasFlagRC(rec) && !seqan::hasFlagRC(rec2))
                     || (!seqan::hasFlagRC(rec) && seqan::hasFlagRC(rec2)))
@@ -250,7 +257,6 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
             eq = get_eq(exons, cont, rec);
         }
     }
-    int unmatched = 0;
     while (!atEnd(bam)) {
         ++line_count;
         seqan::readRecord(rec, bam);
@@ -262,7 +268,11 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
                 break;
             }
             if (eq.size() == 0) {
-                ++unmatched;
+                sem.dec();
+                for (int i = 0; i < current.size(); ++i) {
+                    seqan::writeRecord(unmatched_out, current[i]);
+                }
+                sem.inc();
             } else {
                 string string_eq = to_string(eq[0]);
                 for (int i = 1; i < eq.size(); ++i) {
@@ -272,8 +282,10 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
                 eq.clear();
             }
             qName = seqan::toCString(rec.qName);
+            current.clear();
         }
 
+        current.push_back(rec);
         if (seqan::hasFlagUnmapped(rec)) {
             continue;
         }
@@ -281,6 +293,7 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
         if (seqan::hasFlagMultiple(rec)) {   
             ++line_count;
             seqan::readRecord(rec2, bam);
+            current.push_back(rec2);
             if (!seqan::hasFlagUnmapped(rec2) && seqan::hasFlagAllProper(rec)
                     && ((seqan::hasFlagRC(rec) && !seqan::hasFlagRC(rec2))
                     || (!seqan::hasFlagRC(rec) && seqan::hasFlagRC(rec2)))
@@ -308,7 +321,11 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
 
     /* The last read was never added to the matrix. Do so now. */
     if (eq.size() == 0) {
-        ++unmatched;
+        sem.dec();
+        for (int i = 0; i < current.size(); ++i) {
+            seqan::writeRecord(unmatched_out, current[i]);
+        }
+        sem.inc();
     } else {
         string string_eq = to_string(eq[0]);
         for (int i = 1; i < eq.size(); ++i) {
@@ -317,53 +334,65 @@ int readSAMHelp(string file, int filenumber, int start, int end, int thread,
         matrix.inc_TCC(string_eq, filenumber);
     }
 
-    /* TODO: output unmatched reads. */
-
-    return unmatched;
+    return 0;
 }
 
 int readSAM(string file, int filenumber,
              vector<vector<Exon>*> &exons, TCC_Matrix &matrix,
              string unmatched_outfile, int verbose, int nthreads) {
 
-    cout << "Reading " << file << "..." << endl;
+    cout << "  Reading " << file << "..." << endl;
 
-    vector<future<int>> unmatched;
+    vector<future<int>> threads;
     Semaphore sem;
     int lines = get_sam_line_count(file);
     if (lines == -1) {
-        cerr << "  ERROR: failed to open " << file << endl;
+        cerr << "    ERROR: failed to open " << file << endl;
+        return -1;
     }
+    
+    if (unmatched_outfile.size() != 0) {
+        seqan::BamFileIn bam;
+        if (!seqan::open(bam, file.c_str())) {
+            cerr << "    ERROR: failed to open " << file << endl;
+            return -1;
+        } else {
+            seqan::BamFileOut unmatched_out(seqan::context(bam),
+                    unmatched_outfile.c_str());
+            seqan::BamHeader header;
+            seqan::readHeader(header, bam);
+            seqan::writeHeader(unmatched_out, header);
+            seqan::close(bam);
+            seqan::close(unmatched_out);
+        }
+    }
+    
     for (int j = 0; j < nthreads - 1; ++j) {
-        unmatched.push_back(async(launch::async, &readSAMHelp,
+        threads.push_back(async(launch::async, &readSAMHelp,
                 file, filenumber,
                 lines / nthreads * j, lines / nthreads * (j + 1), j,
                 ref(exons), ref(matrix), unmatched_outfile, verbose,
                 ref(sem)));
     }
-    unmatched.push_back(async(launch::async, &readSAMHelp,
+    threads.push_back(async(launch::async, &readSAMHelp,
             file, filenumber,
             lines / nthreads * (nthreads - 1), lines, nthreads - 1,
             ref(exons), ref(matrix), unmatched_outfile, verbose,
             ref(sem)));
 
-    int total_unmatched = 0;
-    for (int i = 0; i < unmatched.size(); ++i) {
-        if (unmatched[i].valid()) {
-            unmatched[i].wait();
+    for (int i = 0; i < threads.size(); ++i) {
+        if (threads[i].valid()) {
+            threads[i].wait();
         }
         else {
             cout << "invalid state?" << endl;
         }
-        int temp = unmatched[i].get();
-        if (temp == -1) {
+        int err = threads[i].get();
+        if (err == -1) {
             cerr << "  WARNING: thread " << i << " failed" << endl;
-        }
-        else {
-            total_unmatched += temp;
         }
     }
 
-    return total_unmatched;
+    return 0;
 }
 
