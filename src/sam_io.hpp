@@ -6,12 +6,14 @@
 
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include "exon.hpp"
 #include "TCC_Matrix.hpp"
 #include "semaphore.hpp"
 
 int readSAM(std::string file, int filenumber,
-             std::vector<std::vector<Exon>*> &exons, TCC_Matrix &matrix,
+             std::unordered_map<std::string, std::vector<Exon>*> &exons,
+             TCC_Matrix &matrix,
              std::string unmatched_outfile, int verbose, int nthreads);
 
 #endif

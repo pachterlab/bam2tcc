@@ -44,7 +44,7 @@ vector<Exon> *map_values(unordered_map<string, Exon> &m) {
  * @return                      1 if file fails to open, else 0.
  */
 int readGFF(string file, unordered_map<int, int> index_map,
-            vector<vector<Exon>*> &exons, int &transcript_count,
+            unordered_map<string, vector<Exon>*> &exons, int &transcript_count,
             int verbose) {
      
     cout << "  Reading " << file << "..." << flush;
@@ -115,11 +115,11 @@ int readGFF(string file, unordered_map<int, int> index_map,
                 }
                 chrom.at(key).transcripts->push_back(id);
             } else {
-                prev_ref = seqan::toCString(rec.ref);
                 if (!chrom.empty()) {
-                    exons.push_back(map_values(chrom));
+                    exons.emplace(lower(prev_ref), map_values(chrom));
                     chrom.clear();
                 }
+                prev_ref = seqan::toCString(rec.ref);
                 ++transcript_count;
                 prev_transcript_id = transcript_id;
                 
@@ -150,7 +150,7 @@ int readGFF(string file, unordered_map<int, int> index_map,
     
     /* Add the exons from the last-encountered chromosome/scaffold. */
     if (!chrom.empty()) {
-        exons.push_back(map_values(chrom));
+        exons.emplace(lower(prev_ref), map_values(chrom));
     }
     
     return 0;
@@ -174,7 +174,7 @@ int readGFF(string file, unordered_map<int, int> index_map,
  * @return                      1 if error occurs, else 0.
  */
 int readGFFs(vector<string> &files, vector<string> &transcriptome,
-             vector<vector<Exon>*> &exons, int verbose) {
+             unordered_map<string, vector<Exon>*> &exons, int verbose) {
 
     cout << "Reading GFFs..." << endl;
 

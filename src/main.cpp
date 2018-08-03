@@ -178,7 +178,8 @@ int main(int argc, char **argv) {
 
 
     /* Start reading files and filling in TCC matrix */
-    vector<vector<Exon>*> *exons = new vector<vector<Exon>*>;
+    unordered_map<string, vector<Exon>*> *exons
+            = new unordered_map<string, vector<Exon>*>;
     TCC_Matrix *matrix = new TCC_Matrix(sam_files.size());
 
     err = readGFFs(gtf_files, transcriptome_files, *exons, verbose);
@@ -238,8 +239,9 @@ int main(int argc, char **argv) {
 
 
     /* Clean-up */
-    for (uint i = 0; i < exons->size(); ++i) {
-        delete (*exons)[i];
+    for (unordered_map<string, vector<Exon>*>::iterator it = exons->begin();
+            it != exons->end(); ++it) {
+        delete it->second;
     }
     delete exons;
     delete matrix;

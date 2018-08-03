@@ -106,23 +106,16 @@ void get_read_exon_transcripts(const vector<Exon> &chrom,
  * transcriptome file if that option was used. See readGFFs in gff_io.cpp for
  * more info.
  */
-vector<int> get_eq(const vector<vector<Exon>*> &exons, TBamContext &cont,
-        seqan::BamAlignmentRecord rec) {
+vector<int> get_eq(const unordered_map<string, vector<Exon>*> &exons,
+        TBamContext &cont, seqan::BamAlignmentRecord rec) {
     /* Find the vector describing the chromosome/scaffold this read aligned
      * to. If we can't find it, return immediately.*/
-    vector<Exon> *chrom = NULL;
-    for (uint i = 0; i < exons.size(); ++i) {
-        if (exons[i]->size() != 0
-            && lower(string(seqan::toCString(
-                    seqan::contigNames(cont)[rec.rID]))).compare(
-                    ((*exons[i])[0]).seqname) == 0) {
-            chrom = exons[i];
-            break;
-        }
-    }
-    if (chrom == NULL) {
+    auto it = exons.find(lower(string(seqan::toCString(
+            seqan::contigNames(cont)[rec.rID]))));
+    if (it == exons.end()) {    
         return {};
     }
+    vector<Exon> *chrom = it->second;
 
     /* Get "exons" of this read and fill in their associated transcript
      * vectors. */
@@ -183,8 +176,8 @@ vector<int> get_eq(const vector<vector<Exon>*> &exons, TBamContext &cont,
  * @return -1 if file fails to open, else 0
  */
 int readSAMHelp(string file, int filenumber,
-            int start, int end, int thread,
-            vector<vector<Exon>*> &exons, TCC_Matrix &matrix,
+        int start, int end, int thread,
+        unordered_map<string, vector<Exon>*> &exons, TCC_Matrix &matrix,
             string unmatched_outfile, int verbose, Semaphore &sem) {
 
     if (end - start <= 1) {
@@ -207,8 +200,11 @@ int readSAMHelp(string file, int filenumber,
     seqan::readHeader(header, bam);
     TBamContext cont = context(bam);
     vector<seqan::BamAlignmentRecord> current;
-    seqan::BamFileOut unmatched_out(seqan::context(bam),
-            unmatched_outfile.c_str());
+    seqan::BamFileOut unmatched_out;
+    if (unmatched_outfile.size() != 0) {
+        seqan::open(unmatched_out, unmatched_outfile.c_str(),
+                seqan::OPEN_WRONLY);
+    }
     
     /* Read in the first line. */
     if (start == 0) {
@@ -268,11 +264,13 @@ int readSAMHelp(string file, int filenumber,
                 break;
             }
             if (eq.size() == 0) {
-                sem.dec();
-                for (int i = 0; i < current.size(); ++i) {
-                    seqan::writeRecord(unmatched_out, current[i]);
+                if (unmatched_outfile.size() != 0) {
+                    sem.dec();
+                    for (int i = 0; i < current.size(); ++i) {
+                        seqan::writeRecord(unmatched_out, current[i]);
+                    }
+                    sem.inc();
                 }
-                sem.inc();
             } else {
                 string string_eq = to_string(eq[0]);
                 for (int i = 1; i < eq.size(); ++i) {
@@ -321,11 +319,13 @@ int readSAMHelp(string file, int filenumber,
 
     /* The last read was never added to the matrix. Do so now. */
     if (eq.size() == 0) {
-        sem.dec();
-        for (int i = 0; i < current.size(); ++i) {
-            seqan::writeRecord(unmatched_out, current[i]);
+        if (unmatched_outfile.size() != 0) {
+            sem.dec();
+            for (int i = 0; i < current.size(); ++i) {
+                seqan::writeRecord(unmatched_out, current[i]);
+            }
+            sem.inc();
         }
-        sem.inc();
     } else {
         string string_eq = to_string(eq[0]);
         for (int i = 1; i < eq.size(); ++i) {
@@ -338,7 +338,7 @@ int readSAMHelp(string file, int filenumber,
 }
 
 int readSAM(string file, int filenumber,
-             vector<vector<Exon>*> &exons, TCC_Matrix &matrix,
+             unordered_map<string, vector<Exon>*> &exons, TCC_Matrix &matrix,
              string unmatched_outfile, int verbose, int nthreads) {
 
     cout << "  Reading " << file << "..." << endl;
