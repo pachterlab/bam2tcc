@@ -182,9 +182,10 @@ int main(int argc, char **argv) {
             = new unordered_map<string, vector<Exon>*>;
     TCC_Matrix *matrix = new TCC_Matrix(sam_files.size());
 
-    err = readGFFs(gtf_files, transcriptome_files, *exons, verbose);
-    if (err == 1) {
-        // No need to print an error message--readGTFs does it for us.
+    int num_transcripts = readGFFs(gtf_files, transcriptome_files,
+            *exons, verbose);
+    if (num_transcripts == -1) {
+        /* No need to print an error message--readGTFs does it for us. */
         return 1;
     }
 
@@ -199,9 +200,9 @@ int main(int argc, char **argv) {
     cout << "Writing to file... " << flush;
     if (kallisto_ec.size() == 0) {
         if (full) {
-            err = matrix->write_to_file(out_name);
+            err = matrix->write_to_file(out_name, num_transcripts);
         } else {
-            err = matrix->write_to_file_sparse(out_name);
+            err = matrix->write_to_file_sparse(out_name, num_transcripts);
         }
     }
     else {
@@ -227,6 +228,10 @@ int main(int argc, char **argv) {
     err = !cells.is_open();
     if (!err) {
         for (int i = 0; i < sam_files.size(); ++i) {
+            if (sam_files[i].substr(sam_files[i].size() - 4, 4).compare(".sam")
+                    == 0) {
+                sam_files[i] = sam_files[i].substr(0, sam_files[i].size() - 4);
+            }
             cells << sam_files[i] << endl;
         }
         cells.close();

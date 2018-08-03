@@ -7,9 +7,9 @@ So far has only been used on Mac OS X and Linux.
 Binaries may eventually be provided. For now, they will have to be compiled from
 the source code.
 
-## Dependencies
+### Dependencies
 
-## Making the executable
+### Making the executable
 The code is compiled with the g++ compiler. Install it if you don't have it.
 
 Clone repository:
@@ -17,8 +17,8 @@ Clone repository:
     $ git clone https://github.com/laureneliu/tcc-from-alignment ~/clone/path
 ```
 
-GFF and SAM/BAM I/O uses parts of the SeqAn(https://www.seqan.de/) library.
-Follow instructions here(http://seqan.readthedocs.io/en/master/Infrastructure/Use/Install.html)
+GFF and SAM/BAM I/O uses parts of the [SeqAn](https://www.seqan.de/) library.
+Follow instructions [here](http://seqan.readthedocs.io/en/master/Infrastructure/Use/Install.html)
 to download. Or, change into ~/clone/path/tcc-from-alignment and run:
 
 ```
@@ -91,12 +91,13 @@ didn't align to any transcripts. This excludes those reads that didn't align
 anywhere on the genome. Currently outputs a bad header.
 
 ## File formats
-This section will only describe the ec, tsv, and cell files. For information on
+This section will only describe the ec, tsv, and cell files and add some
+restrictions to SAM/BAM formatting. For more information on
 the [GTF](https://uswest.ensembl.org/info/website/upload/gff.html)
  and [SAM/BAM](https://samtools.github.io/hts-specs/SAMv1.pdf)
-file formats, follow the you should look at their documentation.
+file formats, you should look at their documentation.
 
-## .ec files
+### .ec files
 This file contains two tab-separated columns. The first column is the
 zero-indexed row number (the line number). The second contains the equivalence
 class. From [the paper on kallisto](https://www.nature.com/articles/nbt.3519):
@@ -105,15 +106,15 @@ class. From [the paper on kallisto](https://www.nature.com/articles/nbt.3519):
 > the read; ideally it represents the transcripts a read could have originated
 > from and provides a sufficient statistic for quantification.
 
-## .cells files
+### .cells files
 This is a list of the SAM/BAM files used. They will be listed in the order that
 they were input.
 
-## .tsv files
+### .tsv files
 This file may be in either the sparse matrix format (default) or full matrix
 format. You may change the output format using the `--full-matrix`` option.
 
-### Full matrix
+#### Full matrix
 This file contains _n + 1_ tab-separated columns, where _n_ is the number of
 SAM/BAM files you input. The first column contains the zero-indexed row number
 (the line number). The _(i, j)_ th entry, where _j >= 1_, is the number of reads
@@ -137,7 +138,7 @@ Then, three reads in the first SAM/BAM file aligned to equivalence class 1,3.
 
 Note that you can look at the .cells file to see which SAM/BAM file this was.
 
-### Sparse matrix
+#### Sparse matrix
 This file contains three tab-separated columns. Take a full matrix. The first
 column of this file gives the zero-indexed row number of an entry. The second
 gives the -1-indexed column number (i.e. it one-indexes, but does not count the
@@ -159,7 +160,16 @@ The sparse matrix looks like this:
 2   3   1
 ```
 
+### SAM/BAM restrictions
+For paired-end reads, the program will only count as "correct" a pair of
+alignments  with flags: 0x01, 0x02, 0x10 for one alignment and 0x20 for the
+other, and 0x40 for one alignment and 0x80 for the other.
+
+Also, all paired reads must have at least two alignments, one for each end,
+regardless of whether it maps. hisat2 will give a SAM file readable by the
+program, but STAR requires the additional option `--outSAMunmapped Within
+KeepPairs`. Consult the [manual](https://github.com/alexdobin/STAR/blob/master/doc/STARmanual.pdf)
+for more information about the available options.
+
 ## Things that still need to be done
-- [ ] Use threads more efficiently
-- [ ] Use SeqAn
 - [ ] Better documentation! It's, like, several months out of date.

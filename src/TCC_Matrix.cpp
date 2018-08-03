@@ -81,43 +81,34 @@ int TCC_Matrix::write_to_file(string outname, int num_transcripts) {
     int count = 0;
     while (count < num_transcripts) {
         ec << count << '\t' << count << endl;
-        
         tsv << count;
         unordered_map<string, int*>::iterator it
             = matrix->find(to_string(count));
-        if (it != matrix->end()) {
-            for (int j = 0; j < num_files; ++j) {
-                tsv << '\t' << it->second[j];
+        if (it == matrix->end()) {
+            for (int i = 0; i < num_files; ++i) {
+                tsv << '\t' << 0;
             }
         } else {
-            for (int j = 0; j < num_files; ++j) {
-                tsv << '\t' << 0;
+            for (int i = 0; i < num_files; ++i) {
+                tsv << '\t' << it->second[i];
             }
         }
         tsv << endl;
-
         ++count;
     }
-
     for (unordered_map<string, int*>::iterator it = matrix->begin();
-        it != matrix->end(); ++it) {
-        
-        if (it->first.find(',') == string::npos
-                && stoi(it->first) < num_transcripts) {
+            it != matrix->end(); ++it) {
+        if (it->first.find(',') == string::npos) {
             continue;
         }
-
+        ++count;
         ec << count << '\t' << it->first << endl;
-
         tsv << count;
         for (int i = 0; i < num_files; ++i) {
             tsv << '\t' << it->second[i];
         }
         tsv << endl;
-
-        ++count;
     }
-
     ec.close();
     tsv.close();
     return 0;
@@ -134,34 +125,39 @@ int TCC_Matrix::write_to_file(string outname, int num_transcripts) {
  * @param outname    Name of output files (without file extension).
  * @return           1 if error occurs in opening files, otherwise 0.
  */
-int TCC_Matrix::write_to_file_sparse(string outname) {
+int TCC_Matrix::write_to_file_sparse(string outname, int num_transcripts) {
     ofstream ec(outname + ".ec");
     ofstream tsv(outname + ".tsv");
     if (!ec.is_open() || !tsv.is_open()) {
         return 1;
     }
 
-    /* Write to ec file. */
     int count = 0;
-    for (unordered_map<string, int*>::iterator it = matrix->begin();
-        it != matrix->end(); ++it) {
-
-        ec << count << '\t' << it->first << endl;
+    while (count < num_transcripts) {
+        ec << count << '\t' << count << endl;
+        auto it = matrix->find(to_string(count));
+        if (it != matrix->end()) {
+            for (int j = 0; j < num_files; ++j) {
+                if (it->second[j] != 0) {
+                    tsv << count << '\t' << j << '\t' << it->second[j] << endl;
+                }
+            }
+        }
         ++count;
     }
-    /* Write to tsv file. */
-    for (int i = 0; i < num_files; ++i) {
-        count = 0;
-        for (unordered_map<string, int*>::iterator it = matrix->begin();
+    for (unordered_map<string, int*>::iterator it = matrix->begin();
             it != matrix->end(); ++it) {
+        if (it->first.find(',') != string::npos) {
+            continue;
+        }
+        ++count;
+        ec << count << '\t' << it->first << endl;
+        for (int i = 0; i < num_files; ++i) {
             if (it->second[i] != 0) {
-                tsv << count << '\t' << i;
-                tsv << '\t' << it->second[i] << endl;
+                tsv << count << '\t' << i << '\t' << it->second[i] << endl;
             }
-            ++count;
         }
     }
-
     ec.close();
     tsv.close();
     return 0;

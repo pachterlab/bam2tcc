@@ -41,7 +41,7 @@ vector<Exon> *map_values(unordered_map<string, Exon> &m) {
  *
  * @param verbose               If 1, output warning messages to std::cerr.
  *
- * @return                      1 if file fails to open, else 0.
+ * @return                      -1 if file fails to open, else 0.
  */
 int readGFF(string file, unordered_map<int, int> index_map,
             unordered_map<string, vector<Exon>*> &exons, int &transcript_count,
@@ -56,7 +56,7 @@ int readGFF(string file, unordered_map<int, int> index_map,
     
     seqan::GffFileIn gff;
     if (!seqan::open(gff, file.c_str())) {
-        return 1;
+        return -1;
     }
     seqan::GffRecord rec;
     while(!seqan::atEnd(gff)) {
@@ -152,7 +152,7 @@ int readGFF(string file, unordered_map<int, int> index_map,
     if (!chrom.empty()) {
         exons.emplace(lower(prev_ref), map_values(chrom));
     }
-    
+ 
     return 0;
 }
 
@@ -171,7 +171,8 @@ int readGFF(string file, unordered_map<int, int> index_map,
  *
  * @param verbose               If 1, output warning messages to std::cerr.
  *
- * @return                      1 if error occurs, else 0.
+ * @return                      -1 if error occurs, else number of transcripts
+ *                              read.
  */
 int readGFFs(vector<string> &files, vector<string> &transcriptome,
              unordered_map<string, vector<Exon>*> &exons, int verbose) {
@@ -187,22 +188,24 @@ int readGFFs(vector<string> &files, vector<string> &transcriptome,
     if (transcriptome.size() != 0) {
         int ret = get_index_to_kallisto_index(files, transcriptome, *index_map,
                                               verbose);
-        if (ret == 1) {
+        if (ret == -1) {
             /* It prints its own error message, so just return 1. */
-            return 1;
+            return -1;
         }
     }
     
     for (int i = 0; i < files.size(); ++i) {
         int ret = readGFF(files[i], *index_map, exons,
                           transcript_count, verbose);
-        if (ret == 1) {
+        if (ret == -1) {
             cerr << "  ERROR: could not read " << files[i] << endl;
-            return 1;
+            return -1;
         }
     }
     
     delete index_map;
-    cout << "  done" << endl;
-    return 0;
+    ++transcript_count;
+    cout << "  read " << transcript_count << " transcripts" << endl;
+    return transcript_count;
 }
+

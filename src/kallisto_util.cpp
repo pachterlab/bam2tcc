@@ -32,7 +32,7 @@ int get_index_to_seqid_help(string file, unordered_map<int, string> &map,
     string prev_ref = "", prev_transcript_id = "";
     seqan::GffFileIn gff;
     if (!seqan::open(gff, file.c_str())) {
-        return 1;
+        return -1;
     }
     seqan::GffRecord rec;
     while(!seqan::atEnd(gff)) {
@@ -85,9 +85,9 @@ int get_index_to_seqid(const vector<string> &files,
     
     for (int i = 0; i < files.size(); ++i) {
         int ret = get_index_to_seqid_help(files[i], map, transcript_count);
-        if (ret == 1) {
+        if (ret == -1) {
             cerr << "  ERROR: could not read " << files[i] << endl;
-            return 1;
+            return -1;
         }
     }
     
@@ -109,7 +109,7 @@ int get_id_to_kallisto_index_help(string file,
                                   int &transcript_count) {
     ifstream f(file);
     if (!f.is_open()) {
-        return 1;
+        return -1;
     }
     
     string inp;
@@ -125,7 +125,7 @@ int get_id_to_kallisto_index_help(string file,
         int end = inp.find(TRANSCRIPT_NAME_END_CHAR, start);
         if (start == string::npos || end == string::npos) {
             cerr << "  ERROR: unexpected input" << endl;
-            return 1;
+            return -1;
         }
         map.emplace(inp.substr(start, end - start), transcript_count);
     }
@@ -162,9 +162,9 @@ int get_id_to_kallisto_index(const vector<string> &files,
     for (int i = 0; i < files.size(); ++i) {
         int ret = get_id_to_kallisto_index_help(files[i], map,
                                                 transcript_count);
-        if (ret == 1) {
+        if (ret == -1) {
             cerr << endl << "  ERROR: could not read " << files[i] << endl;
-            return 1;
+            return -1;
         }
     }
     
@@ -201,10 +201,10 @@ int get_index_to_kallisto_index(const vector<string> &gtf,
     // Map from index to transcript_id, which should match...
     unordered_map<int, string> *m1 = new unordered_map<int, string>;
     int err = get_index_to_seqid(gtf, *m1);
-    if (err == 1) {
+    if (err == -1) {
         // get_index_to_seqid prints its own error message, since it knows which
         // file failed to open.
-        return 1;
+        return -1;
     }
     
     // ... the transcript IDs in the FASTA files, which are mapped here to the
@@ -213,9 +213,9 @@ int get_index_to_kallisto_index(const vector<string> &gtf,
     // Save where we left off, so we can appropriately index those transcripts
     // which appear in the GTF but not in the transcriptome.
     int index = get_id_to_kallisto_index(transcriptome, *m2);
-    if (index == 1) {
+    if (index == -1) {
         // Again, it prints its own error message.
-        return 1;
+        return -1;
     }
     
     if (verbose) {
@@ -281,23 +281,23 @@ int change_index(const vector<string> &gtf, const vector<string> &transcriptome,
     /* Open files. If it fails, return -1. */
     ifstream in(in_ec);
     if (!in.is_open()) {
-        return 1;
+        return -1;
     }
     ofstream out(out_ec);
     if (!out.is_open()) {
-        return 1;
+        return -1;
     }
     
     /* Get maps */
     unordered_map<int, string> *m1 = new unordered_map<int, string>;
     int err = get_index_to_seqid(gtf, *m1);
-    if (err == 1) {
-        return 1;
+    if (err == -1) {
+        return -1;
     }
     unordered_map<string, int> *m2 = new unordered_map<string, int>;
     err = get_id_to_kallisto_index(transcriptome, *m2);
-    if (err == 1) {
-        return 1;
+    if (err == -1) {
+        return -1;
     }
     
     string inp;
@@ -305,7 +305,7 @@ int change_index(const vector<string> &gtf, const vector<string> &transcriptome,
         vector<string> line = parse_tsv(inp);
         if (line.size() != 2) {
             cerr << "  ERROR: Each line should contain only two fields" << endl;
-            return 1;
+            return -1;
         }
         vector<string> eq = parse_csv(line[1]);
         string new_eq = "";
@@ -315,7 +315,7 @@ int change_index(const vector<string> &gtf, const vector<string> &transcriptome,
             }
             catch (out_of_range &e) {
                 cerr << "  ERROR: ID not found" << endl;
-                return 1;
+                return -1;
             }
         }
         sort(eq.begin(), eq.end());

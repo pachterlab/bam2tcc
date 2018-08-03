@@ -237,8 +237,25 @@ int readSAMHelp(string file, int filenumber,
             if (!seqan::hasFlagUnmapped(rec2) && seqan::hasFlagAllProper(rec)
                     && ((seqan::hasFlagRC(rec) && !seqan::hasFlagRC(rec2))
                     || (!seqan::hasFlagRC(rec) && seqan::hasFlagRC(rec2)))
-                    && seqan::hasFlagFirst(rec) && seqan::hasFlagLast(rec2))
+                    && ((seqan::hasFlagFirst(rec) && seqan::hasFlagLast(rec2))
+                    || (seqan::hasFlagLast(rec) && seqan::hasFlagFirst(rec2))))
             {
+                if (string(seqan::toCString(rec.qName)).compare(
+                            seqan::toCString(rec2.qName)) != 0) {
+                    cerr << "    ERROR: " << seqan::toCString(rec.qName);
+                    cerr << " and " << seqan::toCString(rec2.qName);
+                    cerr << " are not a pair but being considered as a pair.";
+                    cerr << endl;
+                    return -1;
+                }
+                if (rec.rID != rec2.rID) {
+                    cerr << "    ERROR: " << seqan::toCString(rec.qName);
+                    cerr << " on " << rec.rID << " and ";
+                    cerr << seqan::toCString(rec2.qName) << " on " << rec2.rID;
+                    cerr << " are not a pair but being considered as a pair.";
+                    cerr << endl;
+                    return -1;
+                }
                 /* eq = intersect(get_eq(rec), get_eq(rec2)) */
                 /* get_eq returns a sorted vector, so no need to sort here. */
                 vector<int> temp1 = get_eq(exons, cont, rec);
@@ -288,15 +305,36 @@ int readSAMHelp(string file, int filenumber,
             continue;
         }
         vector<int> temp_eq = get_eq(exons, cont, rec);
-        if (seqan::hasFlagMultiple(rec)) {   
+        if (seqan::hasFlagMultiple(rec)) {
+            if (seqan::atEnd(bam)) {
+                cout << "    WARNING: unexpectedly reach end of file" << endl;
+                break;
+            } 
             ++line_count;
             seqan::readRecord(rec2, bam);
             current.push_back(rec2);
             if (!seqan::hasFlagUnmapped(rec2) && seqan::hasFlagAllProper(rec)
                     && ((seqan::hasFlagRC(rec) && !seqan::hasFlagRC(rec2))
                     || (!seqan::hasFlagRC(rec) && seqan::hasFlagRC(rec2)))
-                    && seqan::hasFlagFirst(rec) && seqan::hasFlagLast(rec2))
+                    && ((seqan::hasFlagFirst(rec) && seqan::hasFlagLast(rec2))
+                    || (seqan::hasFlagLast(rec) && seqan::hasFlagFirst(rec2))))
             {
+                if (string(seqan::toCString(rec.qName)).compare(
+                            seqan::toCString(rec2.qName)) != 0) {
+                    cerr << "    ERROR: " << seqan::toCString(rec.qName);
+                    cerr << " and " << seqan::toCString(rec2.qName);
+                    cerr << " are not a pair but being considered as a pair.";
+                    cerr << endl;
+                    return -1;
+                }
+                if (rec.rID != rec2.rID) {
+                    cerr << "    ERROR: " << seqan::toCString(rec.qName);
+                    cerr << " on " << rec.rID << " and ";
+                    cerr << seqan::toCString(rec2.qName) << " on " << rec2.rID;
+                    cerr << " are not a pair but being considered as a pair.";
+                    cerr << endl;
+                    return -1;
+                }
                 /* temp_eq = intersect(temp_eq, get_eq(rec2)) */
                 vector<int> temp1 = get_eq(exons, cont, rec2);
                 vector<int> temp2;
