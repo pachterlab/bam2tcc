@@ -5,6 +5,9 @@
 #include "util.hpp"
 using namespace std;
 
+#define TRANSCRIPT_NAME_START_CHAR ' '
+#define TRANSCRIPT_NAME_END_CHAR ' '
+
 int no_zeros(string inname, string outname) {
     ifstream inec(inname + ".ec");
     ifstream intsv(inname + ".tsv");
@@ -320,6 +323,43 @@ int find_in_transcriptome_transcript(string tofind, int transcript_num,
     return 0;
 }
 
+int add_transcript_names(string infile, string outfile, string transcriptome) {
+    ifstream in(infile);
+    ofstream out(outfile);
+    ifstream trans(transcriptome);
+    if (!in.is_open() || !out.is_open() || !trans.is_open()) {
+        cerr << "Could not open a file" << endl;
+        return -1;
+    }
+    string inp;
+    getline(in, inp);
+    out << inp << "\ttranscript_name" << endl;
+    while (getline(trans, inp)) {
+        if (inp.size() == 0 || inp[0] != '>') {
+            continue;
+        } else {       
+            int start = inp.find(TRANSCRIPT_NAME_START_CHAR) + 1;
+            int end = inp.find(TRANSCRIPT_NAME_END_CHAR, start);
+            string transcriptEC = "\t";
+            if (start == string::npos || end == string::npos) {
+                cerr << "  ERROR: unexpected input" << endl;
+                transcriptEC += "N/A";
+            } else {
+                transcriptEC += inp.substr(start, end - start);
+            }
+            getline(in, inp);
+            out << inp << transcriptEC << endl;
+        }
+    }
+    while (getline(in, inp)) {
+        out << inp << "\tN/A" << endl;
+    }
+    in.close();
+    out.close();
+    trans.close();
+    return 0;
+}
+
 int fill_fastq(string sam, string fastq_in, string fastq_out) {
     ifstream in(sam);
     if (!in.is_open()) {
@@ -379,8 +419,9 @@ int main(int argc, char **argv) {
         cout << "stats:        s infile1 infile2" << endl;
         cout << "find:         f tofind transcript_num infile" << endl;
         cout << "ids:          k infile outfile transcriptome" << endl;
-        cout << "get reads     r insam ref_fastq outfastq" << endl;
-        cout << "sparse        x in_tsv out_tsv" << endl;
+        cout << "get reads:    r insam ref_fastq outfastq" << endl;
+        cout << "sparse:       x in_tsv out_tsv" << endl;
+        cout << "names:        n infile outfile transcriptome" << endl;
         return 1;
     }
     char opt = argv[1][1];
@@ -404,6 +445,8 @@ int main(int argc, char **argv) {
         case 'r':   err = fill_fastq(argv[2], argv[3], argv[4]);
                     break;
         case 'x':   err = moar_zeroes(argv[2], argv[3]);
+                    break;
+        case 'n':   err = add_transcript_names(argv[2], argv[3], argv[4]);
                     break;
     }
     

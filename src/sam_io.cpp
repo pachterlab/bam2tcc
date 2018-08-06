@@ -16,7 +16,7 @@ typedef seqan::FormattedFileContext<seqan::BamFileIn, void>::Type TBamContext;
 /**
  * @brief Get total number of reads in a SAM/BAM file.
  * @param filename  Name of query SAM/BAM file
- * @return          Number of lines in file
+ * @return          Number of lines in file, or -1 if file fails to open.
  */
 int get_sam_line_count(string filename) {
     seqan::BamFileIn bam;
@@ -35,15 +35,15 @@ int get_sam_line_count(string filename) {
 }
 
 /**
- * @brief Gets "exons" of a read.
+ * @brief Gets "exons" of an alignment.
  *
  * Looks at CIGAR string to determine where a read was split up across different
  * exons, and returns a vector containing the exons of the read.
  *
- * @param r         Read to examine.
- * @return          Vector of exons
+ * @param r         Alignment to examine.
+ * @return          Vector of alignment exons.
  */
-vector<Exon> get_read_exon_positions(seqan::BamAlignmentRecord &r) {
+vector<Exon> get_alignment_exon_positions(seqan::BamAlignmentRecord &r) {
     vector<Exon> exons;
     int start = r.beginPos, end = start;
     for (uint i = 0; i < seqan::length(r.cigar); ++i) {
@@ -69,14 +69,14 @@ vector<Exon> get_read_exon_positions(seqan::BamAlignmentRecord &r) {
 
 /**
  * @brief Gets all possible transcripts associated with read exon vector (for
- * use with get_read_exon_positions function). That is, the function fills in
- * the "transcripts" member of the exon struct.
+ * use with get_alignment_exon_positions function). That is, the function fills
+ * in the "transcripts" member of the exon struct.
  *
  * @param chrom         Exons of the chromosome/scaffold the read aligns to.
  * @param read_exons    Vector of exons to fill with transcript information.
  * @postcondition       Transcripts member of exons in read_exons filled.
  */
-void get_read_exon_transcripts(const vector<Exon> &chrom,
+void get_alignment_exon_transcripts(const vector<Exon> &chrom,
                                vector<Exon> &read_exons) {
    
     for (uint i = 0; i < chrom.size(); ++i) {
@@ -119,8 +119,8 @@ vector<int> getEC(const unordered_map<string, vector<Exon>*> &exons,
 
     /* Get "exons" of this read and fill in their associated transcript
      * vectors. */
-    vector<Exon> read_exons = get_read_exon_positions(rec);
-    get_read_exon_transcripts(*chrom, read_exons);
+    vector<Exon> read_exons = get_alignment_exon_positions(rec);
+    get_alignment_exon_transcripts(*chrom, read_exons);
     
     /* Take the intersection of all the transcripts the read exons aligned
      * to, which gives the equivalence class of this read. */
