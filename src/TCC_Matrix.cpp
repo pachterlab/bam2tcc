@@ -98,16 +98,17 @@ int TCC_Matrix::write_to_file(string outname, int num_transcripts) {
     }
     for (unordered_map<string, int*>::iterator it = matrix->begin();
             it != matrix->end(); ++it) {
-        if (it->first.find(',') == string::npos) {
+        if (it->first.find(',') == string::npos
+                && stoi(it->first) < num_transcripts) {
             continue;
         }
-        ++count;
         ec << count << '\t' << it->first << endl;
         tsv << count;
         for (int i = 0; i < num_files; ++i) {
             tsv << '\t' << it->second[i];
         }
         tsv << endl;
+        ++count;
     }
     ec.close();
     tsv.close();
@@ -147,16 +148,17 @@ int TCC_Matrix::write_to_file_sparse(string outname, int num_transcripts) {
     }
     for (unordered_map<string, int*>::iterator it = matrix->begin();
             it != matrix->end(); ++it) {
-        if (it->first.find(',') != string::npos) {
+        if (it->first.find(',') == string::npos
+                && stoi(it->first) < num_transcripts) {
             continue;
         }
-        ++count;
         ec << count << '\t' << it->first << endl;
         for (int i = 0; i < num_files; ++i) {
             if (it->second[i] != 0) {
                 tsv << count << '\t' << i << '\t' << it->second[i] << endl;
             }
         }
+        ++count;
     }
     ec.close();
     tsv.close();

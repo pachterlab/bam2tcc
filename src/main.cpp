@@ -181,21 +181,21 @@ int main(int argc, char **argv) {
     unordered_map<string, vector<Exon>*> *exons
             = new unordered_map<string, vector<Exon>*>;
     TCC_Matrix *matrix = new TCC_Matrix(sam_files.size());
-
+    
     int num_transcripts = readGFFs(gtf_files, transcriptome_files,
             *exons, verbose);
     if (num_transcripts == -1) {
         /* No need to print an error message--readGTFs does it for us. */
         return 1;
     }
-
+    
     cout << "Reading SAMs..." << endl;
     for (int i = 0; i < sam_files.size(); ++i) {
         readSAM(sam_files[i], i, *exons, *matrix, unmatched_out,
                 verbose, threads);
     }
     cout << "  done" << endl;
-        
+    
     /* Write to output files */
     cout << "Writing to file... " << flush;
     if (kallisto_ec.size() == 0) {

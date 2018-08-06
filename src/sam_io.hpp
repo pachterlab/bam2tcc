@@ -11,6 +11,8 @@
 #include "TCC_Matrix.hpp"
 #include "semaphore.hpp"
 
+#define PRIMARY_ONLY 0
+
 int readSAM(std::string file, int filenumber,
              std::unordered_map<std::string, std::vector<Exon>*> &exons,
              TCC_Matrix &matrix,
