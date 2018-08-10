@@ -168,50 +168,51 @@ vector<int> getEC(const unordered_map<string, vector<Exon>*> &exons,
  * read.
  */
 vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
-        TBamContext &cont, vector<vector<seqan::BamAlignmentRecord>> &curr) {
+        TBamContext &cont, vector<vector<seqan::BamAlignmentRecord>> &curr,
+        bool rapmap, bool paired) {
 
+    if (paired && (curr[0].size() == 0 || curr[1].size() == 0)) {
+        return {};
+    }
+
+    vector<int> temp;
     vector<int> EC;
     for (auto r = curr[0].begin(); r != curr[0].end(); ++r) {
-        vector<int> alignmentEC;
-        if (seqan::hasFlagMultiple(*r)) {
-            for (auto r2 = curr[1].begin(); r2 != curr[1].end(); ++r2) {
-                if (!seqan::hasFlagAllProper(*r)
-                    || seqan::hasFlagRC(*r) == seqan::hasFlagRC(*r2)
-                    || r->rID != r2->rID) {
-                    continue;
-                }
-#if PRIMARY_ONLY
-                if (seqan::hasFlagSecondary(*r)
-                        && seqan::hasFlagSecondary(*r2)) {
-                    continue;
-                }
-#endif
-                if (string(seqan::toCString(r->qName)).compare(
-                    seqan::toCString(r2->qName)) != 0) {
-                    cerr << "    ERROR: " << seqan::toCString(r->qName);
-                    cerr << " and " << seqan::toCString(r2->qName);
-                    cerr << " are not a pair but being considered as a pair.";
-                    cerr << endl;
-                    return {};
-                }
-                /* temp = intersection(getEC(*r), getEC(*r2)) */
-                /* alignmentEC = union(alignmentEC, temp) */
-                vector<int> EC = getEC(exons, cont, *r);
-                vector<int> EC2 = getEC(exons, cont, *r2);
-                set_intersection(EC.begin(), EC.end(),
-                    EC2.begin(), EC2.end(), back_inserter(alignmentEC));
-                sort(alignmentEC.begin(), alignmentEC.end());
-                alignmentEC.erase(
-                        unique(alignmentEC.begin(), alignmentEC.end()),
-                        alignmentEC.end());
-            }
+        temp.clear();
+        if (rapmap) {
+           temp = {r->rID};
         } else {
-            alignmentEC = getEC(exons, cont, *r);
+           temp = getEC(exons, cont, *r);
         }
-        /* EC = union(EC, alignmentEC) */
-        EC.insert(EC.end(), alignmentEC.begin(), alignmentEC.end());
-        sort(EC.begin(), EC.end());
-        EC.erase(unique(EC.begin(), EC.end()), EC.end());
+        EC.insert(EC.end(), temp.begin(), temp.end());
+    }
+    sort(EC.begin(), EC.end());
+    EC.erase(unique(EC.begin(), EC.end()), EC.end());
+
+    if (paired) {
+        vector<int> EC2;
+        for (auto r = curr[1].begin(); r != curr[1].end(); ++r) {
+            temp.clear();
+            if (rapmap) {
+               temp = {r->rID};
+            } else {
+               temp = getEC(exons, cont, *r);
+            }
+            EC2.insert(EC2.end(), temp.begin(), temp.end());
+        }
+        sort(EC2.begin(), EC2.end());
+        EC2.erase(unique(EC2.begin(), EC2.end()), EC2.end());
+        
+        if (EC.size() == 0) {
+            EC = EC2;
+        } else if (EC2.size() != 0) {
+            temp.clear();
+            set_intersection(EC.begin(), EC.end(),
+                    EC2.begin(), EC2.end(), back_inserter(temp));
+            EC = temp;
+            sort(EC.begin(), EC.end());
+            EC.erase(unique(EC.begin(), EC.end()), EC.end());
+        }
     }
     return EC;
 }
@@ -253,7 +254,8 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
 int readSAMHelp(string file, int filenumber,
         int start, int end, int thread,
         unordered_map<string, vector<Exon>*> &exons, TCC_Matrix &matrix,
-            string unmatched_outfile, int verbose, Semaphore &sem) {
+        string unmatched_outfile, int verbose, Semaphore &sem,
+        bool rapmap, bool paired) {
 
     if (end - start <= 1) {
         return -1;
@@ -320,7 +322,7 @@ int readSAMHelp(string file, int filenumber,
             }
             seqan::readRecord(rec, bam);
         }
-        vector<int> EC = getReadEC(exons, cont, curr);
+        vector<int> EC = getReadEC(exons, cont, curr, rapmap, paired);
         if (EC.size() == 0) {
             /* Deal with unmapped output */
         } else {
@@ -338,7 +340,8 @@ int readSAMHelp(string file, int filenumber,
 
 int readSAM(string file, int filenumber,
              unordered_map<string, vector<Exon>*> &exons, TCC_Matrix &matrix,
-             string unmatched_outfile, int verbose, int nthreads) {
+             string unmatched_outfile, int verbose, int nthreads,
+             bool rapmap, bool paired) {
 
     cout << "  Reading " << file << "..." << endl;
 
@@ -371,13 +374,13 @@ int readSAM(string file, int filenumber,
                 file, filenumber,
                 lines / nthreads * j, lines / nthreads * (j + 1), j,
                 ref(exons), ref(matrix), unmatched_outfile, verbose,
-                ref(sem)));
+                ref(sem), rapmap, paired));
     }
     threads.push_back(async(launch::async, &readSAMHelp,
             file, filenumber,
             lines / nthreads * (nthreads - 1), lines + 1, nthreads - 1,
             ref(exons), ref(matrix), unmatched_outfile, verbose,
-            ref(sem)));
+            ref(sem), rapmap, paired));
 
     for (int i = 0; i < threads.size(); ++i) {
         if (threads[i].valid()) {

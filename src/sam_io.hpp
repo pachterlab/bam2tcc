@@ -16,6 +16,7 @@
 int readSAM(std::string file, int filenumber,
              std::unordered_map<std::string, std::vector<Exon>*> &exons,
              TCC_Matrix &matrix,
-             std::string unmatched_outfile, int verbose, int nthreads);
+             std::string unmatched_outfile, int verbose, int nthreads,
+             bool rapmap, bool paired);
 
 #endif

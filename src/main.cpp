@@ -29,13 +29,15 @@ int main(int argc, char **argv) {
     string usage = "Usage:\n  " + string(argv[0]) + " [options]* -g <GTF> ";
     usage += "-S <SAM> [-o <output>]\n";
     usage += "  <GTF>               Comma-separated list of GTF gene ";
-    usage +=                       "annotation files\n";
+    usage +=                       "annotation files. Not required with";
+    usage +=                       " rapmap option.\n";
     usage += "  <SAM>               Comma-separated list of ";
     usage +=                       "SAM/BAM files containing aligned ";
     usage +=                       "single-end reads\n";
     usage += "  <output>            Name of output file (defaults to ";
     usage +=                       "matrix.ec, matrix.tsv, matrix.cells)\n";
     usage += "\nOptions:\n";
+    usage += "  -U                         Indicate that reads are unpaired.\n";
     usage += "  -p, --threads <int>        Max number of threads to use.";
     usage +=                              " Defaults to 1.\n";
     usage += "  -q                         Suppresses some warnings and ";
@@ -45,6 +47,8 @@ int main(int argc, char **argv) {
     usage +=                              "kallisto using transcriptome(s) ";
     usage +=                              "<fa>. Takes a comma-separated ";
     usage +=                              "of file names\n";
+    usage += "  -r, --rapmap               <SAM> is a RapMap \"lightweight\"";
+    usage +=                              " SAM/BAM file\n";
     usage += "  -e, --ec <ec>              Output TCCs in the same order as in";
     usage +=                              " input file ec.\n";
     usage += "  --full-matrix              Output full (non-sparse) matrix. ";
@@ -67,12 +71,14 @@ int main(int argc, char **argv) {
     
     string out_name = "matrix", unmatched_out = ""; // default outfile names
     // Some booleans
+    bool rapmap = false, paired = true;
     int err, verbose = 1, full = 0;
-    int threads = 1;
+    int threads = 1, num_transcripts = 0;
     time_t start = time(0); // to calculate total runtime
 
     // for use with getopt_long
     struct option long_opts[] = {
+        {"unpaired", no_argument, no_argument, 'U'},
         {"threads", required_argument, 0, 'p'},
         {"quiet", no_argument, no_argument, 'q'},
         {"unmatched", required_argument, 0, 'u'},
@@ -80,6 +86,7 @@ int main(int argc, char **argv) {
         {"sam", required_argument, 0, 's'},
         {"output", required_argument, 0, 'o'},
         {"transcriptome", required_argument, 0, 't'},
+        {"rapmap", no_argument, no_argument, 'r'},
         {"ec", required_argument, 0, 'e'},
         {"full-matrix", no_argument, no_argument, 'f'}
     };
@@ -88,9 +95,11 @@ int main(int argc, char **argv) {
     int opt_index = 0;
     while(1) {
         int c = getopt_long(argc, argv,
-                "p:qu:g:S:o:t:e:f", long_opts, &opt_index);
+                "Up:qu:g:S:o:t:re:f", long_opts, &opt_index);
         if (c == -1) { break; }
         switch (c) {
+            case 'U':   paired = false;
+                        break;
             case 'p':   threads = atoi(optarg);
                         break;
             case 'q':   verbose = 0;
@@ -105,6 +114,8 @@ int main(int argc, char **argv) {
                         break;
             case 't':   transcriptome_files = parse_csv(optarg);
                         break;
+            case 'r':   rapmap = true;
+                        break;
             case 'e':   kallisto_ec = optarg;
                         break;
             case 'f':   full = 1;
@@ -112,8 +123,11 @@ int main(int argc, char **argv) {
         }
     }
 
-    /* Must have gtf and sam files! if not, program prints usage and exits. */
-    if (gtf_files.size() == 0 || sam_files.size() == 0) {
+    if (sam_files.size() == 0) {
+        cerr << usage << flush;
+        return 1;
+    }
+    if (!rapmap && gtf_files.size() == 0) {
         cerr << usage << flush;
         return 1;
     }
@@ -182,17 +196,19 @@ int main(int argc, char **argv) {
             = new unordered_map<string, vector<Exon>*>;
     TCC_Matrix *matrix = new TCC_Matrix(sam_files.size());
     
-    int num_transcripts = readGFFs(gtf_files, transcriptome_files,
-            *exons, verbose);
-    if (num_transcripts == -1) {
-        /* No need to print an error message--readGTFs does it for us. */
-        return 1;
+    if (!rapmap) {
+        num_transcripts = readGFFs(gtf_files, transcriptome_files,
+                *exons, verbose);
+        if (num_transcripts == -1) {
+            /* No need to print an error message--readGTFs does it for us. */
+            return 1;
+        }
     }
     
     cout << "Reading SAMs..." << endl;
     for (int i = 0; i < sam_files.size(); ++i) {
         readSAM(sam_files[i], i, *exons, *matrix, unmatched_out,
-                verbose, threads);
+                verbose, threads, rapmap, paired);
     }
     cout << "  done" << endl;
     

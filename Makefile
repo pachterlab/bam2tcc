@@ -5,7 +5,7 @@ OBJDIR = obj
 BINDIR = bin
 
 CXX = g++
-CXXFLAGS = -g -I$(SEQAN_PATH)/include -Wall -pedantic -ansi --std=c++14 
+CXXFLAGS = -g -I$(SEQAN_PATH)/include -Wall -ansi --std=c++14 
 
 EXENAME = main
 
@@ -17,7 +17,8 @@ all: main
 main: $(OBJDIR)/main.o $(OBJS) 
 	$(CXX) -o $(BINDIR)/$(EXENAME) $^ -pthread
 
-debug: $(OBJDIR)/debug_util.o $(OBJDIR)/util.o
+debug: $(OBJDIR)/debug_util.o $(OBJDIR)/util.o $(OBJDIR)/kallisto_util.o \
+$(OBJDIR)/TCC_Matrix.o
 	$(CXX) -o $(BINDIR)/debug $^
 
 # File not on github. Used to decide whether multithreading would be worth it.

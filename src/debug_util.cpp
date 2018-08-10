@@ -1,8 +1,11 @@
 #include <fstream>
 #include <iostream>
 #include <unordered_map>
+#include <set>
 
 #include "util.hpp"
+#include "TCC_Matrix.hpp"
+#include "kallisto_util.hpp"
 using namespace std;
 
 #define TRANSCRIPT_NAME_START_CHAR ' '
@@ -411,6 +414,60 @@ int fill_fastq(string sam, string fastq_in, string fastq_out) {
     return 0;
 }
 
+int salmon_EQ_to_TCC(string infile, string outprefix, string ref_ec) {
+    ifstream in(infile);
+    if (!in.is_open()) {
+        cerr << "Unable to open " << infile << endl;
+        return -1;
+    }
+    ofstream cells(outprefix + ".cells");
+    if (!cells.is_open()) {
+        cerr << "Unable to open outfiles with prefix " << outprefix << endl;
+        return -1;
+    }
+    cells << outprefix << endl;
+    cells.close();
+
+    string inp;
+    getline(in, inp);
+    int num_transcripts = stoi(inp);
+    getline(in, inp);
+    int num_ECs = stoi(inp);
+    int line_count = 0;
+    while (line_count < num_transcripts) {
+        getline(in, inp);
+        ++line_count;
+    }
+    line_count = 0;
+    TCC_Matrix *matrix = new TCC_Matrix(1);
+    while (line_count < num_ECs) {
+        getline(in, inp);
+        vector<string> EC = parse_tsv(inp);
+        string stringEC = EC[1];
+        for (int i = 2; i < stoi(EC[0]) + 1; ++i) {
+            stringEC += "," + EC[i];
+        }
+        for (int i = 0; i < stoi(EC[EC.size() - 1]); ++i) {
+            matrix->inc_TCC(stringEC, 0);
+        }
+        ++line_count;
+    }
+    in.close();
+
+    vector<string> *kallisto_order = new vector<string>;
+    set<string> *kallisto_ecs = new set<string>;
+    int err = get_kallisto_ec_order(ref_ec, *kallisto_order,
+                                    *kallisto_ecs);
+    if (err != -1) {
+        err = matrix->write_to_file_in_order_sparse(outprefix,
+            *kallisto_order, *kallisto_ecs);
+    }
+    delete matrix;
+    delete kallisto_order;
+    delete kallisto_ecs;
+    return err;
+}
+
 int main(int argc, char **argv) {
     if (argc == 1) {
         cout << "no zeroes:    z infile outfile" << endl;
@@ -422,6 +479,7 @@ int main(int argc, char **argv) {
         cout << "get reads:    r insam ref_fastq outfastq" << endl;
         cout << "sparse:       x in_tsv out_tsv" << endl;
         cout << "names:        n infile outfile transcriptome" << endl;
+        cout << "EQ to TCC:    t infile outprefix ref_ec" << endl;
         return 1;
     }
     char opt = argv[1][1];
@@ -447,6 +505,8 @@ int main(int argc, char **argv) {
         case 'x':   err = moar_zeroes(argv[2], argv[3]);
                     break;
         case 'n':   err = add_transcript_names(argv[2], argv[3], argv[4]);
+                    break;
+        case 't':   err = salmon_EQ_to_TCC(argv[2], argv[3], argv[4]);
                     break;
     }
     
