@@ -14,7 +14,7 @@
 
 using namespace std;
 
-#define TRANSCRIPT_NAME_START_CHAR ' '
+#define TRANSCRIPT_NAME_START_CHAR '>'
 #define TRANSCRIPT_NAME_END_CHAR ' '
 
 

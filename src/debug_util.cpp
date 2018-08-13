@@ -414,10 +414,16 @@ int fill_fastq(string sam, string fastq_in, string fastq_out) {
     return 0;
 }
 
-int salmon_EQ_to_TCC(string infile, string outprefix, string ref_ec) {
+int salmon_EQ_to_TCC(string infile, string outprefix, string transcriptome,
+        string ref_ec) {
     ifstream in(infile);
     if (!in.is_open()) {
         cerr << "Unable to open " << infile << endl;
+        return -1;
+    }
+    ifstream trans(transcriptome);
+    if (!trans.is_open()) {
+        cerr << "Unable to open " << transcriptome << endl;
         return -1;
     }
     ofstream cells(outprefix + ".cells");
@@ -429,23 +435,42 @@ int salmon_EQ_to_TCC(string infile, string outprefix, string ref_ec) {
     cells.close();
 
     string inp;
+    int line_count = 0;
+    unordered_map<string, int> *m1 = new unordered_map<string, int>;
+    while(getline(trans, inp)) {
+        if (inp.size() == 0 || inp[0] != '>') {
+            continue;
+        }
+        inp = lower(inp);
+        int end = inp.find(' ');
+        if (end == string::npos) {
+            cerr << "ERROR: unexpected input in transcriptome" << endl;
+            return -1;
+        }
+        m1->emplace(inp.substr(1, end - 1), line_count);
+        ++line_count;
+    }
+
     getline(in, inp);
     int num_transcripts = stoi(inp);
     getline(in, inp);
     int num_ECs = stoi(inp);
-    int line_count = 0;
+    line_count = 0;
+    unordered_map<int, int> *m = new unordered_map<int, int>;
     while (line_count < num_transcripts) {
         getline(in, inp);
+        m->emplace(line_count, m1->at(lower(inp)));
         ++line_count;
     }
+
     line_count = 0;
     TCC_Matrix *matrix = new TCC_Matrix(1);
     while (line_count < num_ECs) {
         getline(in, inp);
         vector<string> EC = parse_tsv(inp);
-        string stringEC = EC[1];
+        string stringEC = to_string(m->at(stoi(EC[1])));
         for (int i = 2; i < stoi(EC[0]) + 1; ++i) {
-            stringEC += "," + EC[i];
+            stringEC += "," + to_string(m->at(stoi(EC[i])));
         }
         for (int i = 0; i < stoi(EC[EC.size() - 1]); ++i) {
             matrix->inc_TCC(stringEC, 0);
@@ -462,10 +487,96 @@ int salmon_EQ_to_TCC(string infile, string outprefix, string ref_ec) {
         err = matrix->write_to_file_in_order_sparse(outprefix,
             *kallisto_order, *kallisto_ecs);
     }
+    delete m;
+    delete m1;
     delete matrix;
     delete kallisto_order;
     delete kallisto_ecs;
     return err;
+}
+
+int normal_transcriptome(string infile, string outfile) {
+    ifstream in(infile);
+    if (!in.is_open()) {
+        cerr << "Unable to open " << infile << endl;
+        return -1;
+    }
+    ofstream out(outfile);
+    if (!out.is_open()) {
+        cerr << "Unable to open " << outfile << endl;
+        return -1;
+    }
+    string inp;
+    while (getline(in, inp)) {
+        if (inp.size() == 0 || inp[0] != '>') {
+            out << inp << endl;
+            continue;
+        }
+        int start = inp.find(' ');
+        if (start == string::npos) {
+            cerr << "Unexpected input in " << infile << ':' << endl;
+            cerr << inp << endl;
+            return -1;
+        }
+        out << '>' << inp.substr(start + 1, inp.size() - start + 1) << endl;
+    }
+    in.close();
+    out.close();
+    return 0;
+}
+
+int gene_table(string infile, string outfile) {
+    ifstream in(infile);
+    if (!in.is_open()) {
+        cout << "Unable to open " << infile << endl;
+        return -1;
+    }
+    ofstream out(outfile);
+    if (!out.is_open()) {
+        cout << "Unable to open " << outfile << endl;
+        return -1;
+    }
+
+    string inp;
+    while (getline(in, inp)) {
+        if (inp.size() == 0 || inp[0] == '#') {
+            continue;
+        }
+
+        vector<string> input = parse_tsv(inp);
+        if (input.size() != 9) {
+            cout << "Not enough fields in GFF" << endl;
+            return -1;
+        }
+        if (input[2].compare("transcript") == 0) {
+            string attribute = input[8];
+            string find = "gene_id \"";
+            int start = attribute.find(find);
+            if (start == string::npos) {
+                cout << "Gene ID not found:" << endl;
+                cout << inp << endl;
+                continue;
+            } else {
+                start += find.size();
+            }
+            int end = attribute.find("\";", start);
+            out << attribute.substr(start, end - start) << '\t';
+            find = "transcript_id \"";
+            start = attribute.find(find);
+            if (start == string::npos) {
+                cout << "Transcript ID not found:" << endl;
+                cout << inp << endl;
+                continue;
+            } else {
+                start += find.size();
+            }
+            end = attribute.find("\";", start);
+            out << attribute.substr(start, end - start) << endl;
+        }
+    }
+    in.close();
+    out.close();
+    return 0;
 }
 
 int main(int argc, char **argv) {
@@ -479,7 +590,9 @@ int main(int argc, char **argv) {
         cout << "get reads:    r insam ref_fastq outfastq" << endl;
         cout << "sparse:       x in_tsv out_tsv" << endl;
         cout << "names:        n infile outfile transcriptome" << endl;
-        cout << "EQ to TCC:    t infile outprefix ref_ec" << endl;
+        cout << "EQ to TCC:    t infile outprefix transcriptome ref_ec" << endl;
+        cout << "t names:      w intranscriptome outtranscriptome" << endl;
+        cout << "gene table:   g ingtf outtable" << endl;
         return 1;
     }
     char opt = argv[1][1];
@@ -506,7 +619,11 @@ int main(int argc, char **argv) {
                     break;
         case 'n':   err = add_transcript_names(argv[2], argv[3], argv[4]);
                     break;
-        case 't':   err = salmon_EQ_to_TCC(argv[2], argv[3], argv[4]);
+        case 't':   err = salmon_EQ_to_TCC(argv[2], argv[3], argv[4], argv[5]);
+                    break;
+        case 'w':   err = normal_transcriptome(argv[2], argv[3]);
+                    break;
+        case 'g':   err = gene_table(argv[2], argv[3]);
                     break;
     }
     

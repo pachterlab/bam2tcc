@@ -245,7 +245,8 @@ int main(int argc, char **argv) {
     if (!err) {
         for (int i = 0; i < sam_files.size(); ++i) {
             if (sam_files[i].substr(sam_files[i].size() - 4, 4).compare(".sam")
-                    == 0) {
+                    == 0 || sam_files[i].substr(sam_files[i].size() - 4, 4)
+                    .compare(".bam") == 0) {
                 sam_files[i] = sam_files[i].substr(0, sam_files[i].size() - 4);
             }
             cells << sam_files[i] << endl;

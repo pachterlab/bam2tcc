@@ -15,21 +15,41 @@ typedef seqan::FormattedFileContext<seqan::BamFileIn, void>::Type TBamContext;
 
 /**
  * @brief Get total number of reads in a SAM/BAM file.
+ *
+ * Default is to not use SeqAn, since it seems to be slower.
+ *
  * @param filename  Name of query SAM/BAM file
  * @return          Number of lines in file, or -1 if file fails to open.
  */
-int get_sam_line_count(string filename) {
-    seqan::BamFileIn bam;
-    if (!seqan::open(bam, filename.c_str())) {
-        return -1;
-    }
-    seqan::BamHeader head;
-    seqan::readHeader(head, bam);
-    seqan::BamAlignmentRecord rec;
+int get_sam_line_count(string filename, bool seqan=false) {
     int line_count = 0;
-    while (!atEnd(bam)) {
+    if (seqan) {
+        seqan::BamFileIn bam;
+        if (!seqan::open(bam, filename.c_str())) {
+            return -1;
+        }
+        seqan::BamHeader head;
+        seqan::readHeader(head, bam);
+        seqan::BamAlignmentRecord rec;
+        while (!atEnd(bam)) {
+            ++line_count;
+            seqan::readRecord(rec, bam);
+        }
+    } else {
+        ifstream in(filename);
+        if (!in.is_open()) {
+            return -1;
+        }
+        string inp;
+        while (getline(in, inp)) {
+            if (inp.size() != 0 && inp[0] != '@') {
+                break;
+            }
+        }
         ++line_count;
-        seqan::readRecord(rec, bam);
+        while (getline(in, inp)) {
+            ++line_count;
+        }
     }
     return line_count;
 }
@@ -255,7 +275,7 @@ int readSAMHelp(string file, int filenumber,
         int start, int end, int thread,
         unordered_map<string, vector<Exon>*> &exons, TCC_Matrix &matrix,
         string unmatched_outfile, int verbose, Semaphore &sem,
-        bool rapmap, bool paired) {
+        bool rapmap, bool paired, bool all_same) {
 
     if (end - start <= 1) {
         return -1;
@@ -281,11 +301,12 @@ int readSAMHelp(string file, int filenumber,
     seqan::BamFileOut unmatched_out;
     if (unmatched_outfile.size() != 0) {
         seqan::open(unmatched_out, unmatched_outfile.c_str(),
-                seqan::OPEN_WRONLY);
+                seqan::OPEN_APPEND);
     }
     
     /* Read in the first line. */
     string qName;
+    string recqName;
     if (start == 0) {
         ++line_count;
         seqan::readRecord(rec, bam);
@@ -295,21 +316,36 @@ int readSAMHelp(string file, int filenumber,
             seqan::readRecord(rec, bam);
         }
         qName = seqan::toCString(rec.qName);
+        if (!all_same) {
+            qName = qName.substr(0, qName.size() - 2);
+        }
         ++line_count;
         seqan::readRecord(rec, bam);
         /* If `start` is in the middle of a multimapping (multientry) read,
          * keep going until it's done. */
-        while (!atEnd(bam)
-                && qName.compare(seqan::toCString(rec.qName)) == 0) {
+        recqName = seqan::toCString(rec.qName);
+        if (!all_same) {
+            recqName = recqName.substr(0, recqName.size() - 2);
+        }
+        while (!atEnd(bam) && qName.compare(recqName) == 0) {
             ++line_count;
             seqan::readRecord(rec, bam);
+            recqName = seqan::toCString(rec.qName);
+            if (!all_same) {
+                recqName = recqName.substr(0, recqName.size() - 2);
+            }
         }
     }
     while (line_count < end) {
         qName = seqan::toCString(rec.qName);
-        while (qName.compare(seqan::toCString(rec.qName)) == 0) {
+        if (!all_same) {
+            qName = qName.substr(0, qName.size() - 2);
+        }
+        recqName = qName;
+        while (qName.compare(recqName) == 0) {
             if (!seqan::hasFlagUnmapped(rec)
-                    && !seqan::hasFlagNextUnmapped(rec)) {
+                    && !seqan::hasFlagNextUnmapped(rec)
+                    && !(paired && rec.rID != rec.rNextId)) {
                 if (seqan::hasFlagLast(rec)) {
                     curr[1].push_back(rec);
                 } else {
@@ -321,6 +357,10 @@ int readSAMHelp(string file, int filenumber,
                 break;
             }
             seqan::readRecord(rec, bam);
+            recqName = seqan::toCString(rec.qName);
+            if (!all_same) {
+                recqName = recqName.substr(0, recqName.size() - 2);
+            }
         }
         vector<int> EC = getReadEC(exons, cont, curr, rapmap, paired);
         if (EC.size() == 0) {
@@ -352,35 +392,71 @@ int readSAM(string file, int filenumber,
         cerr << "    ERROR: failed to open " << file << endl;
         return -1;
     }
-    
+   
+    seqan::BamFileIn bam;
+    if (!seqan::open(bam, file.c_str())) {
+        cerr << "    ERROR: failed to open " << file << endl;
+        return -1;
+    }
+    seqan::BamHeader header;
+    seqan::readHeader(header, bam);
+
+    /* Write header of unmatched SAM if necessary. */
     if (unmatched_outfile.size() != 0) {
-        seqan::BamFileIn bam;
-        if (!seqan::open(bam, file.c_str())) {
-            cerr << "    ERROR: failed to open " << file << endl;
-            return -1;
-        } else {
-            seqan::BamFileOut unmatched_out(seqan::context(bam),
-                    unmatched_outfile.c_str());
-            seqan::BamHeader header;
-            seqan::readHeader(header, bam);
-            seqan::writeHeader(unmatched_out, header);
-            seqan::close(bam);
-            seqan::close(unmatched_out);
+        seqan::BamFileOut unmatched_out(seqan::context(bam),
+            unmatched_outfile.c_str());
+        seqan::writeHeader(unmatched_out, header);
+        seqan::close(unmatched_out);
+    }
+
+    /* Try to figure out naming convention of reads, i.e. are pairs
+     * labelled with the same `QNAME` or different? I'm assuming here that no
+     * one is going to give me a dataset with like two reads. Also that it will
+     * be in order, i.e. I will not see read x.2 before x.1. */
+    bool all_same = true;
+    if (paired) {
+        seqan::BamAlignmentRecord rec;
+        bool one_seen = false, two_seen = false;
+        while (!seqan::atEnd(bam)) {
+            seqan::readRecord(rec, bam);
+            string qName = seqan::toCString(rec.qName);
+            if (qName.size() < 2) {
+                break;
+            }
+            if (!isdigit(qName[qName.size() - 2])) {
+                if (qName[qName.size() - 1] == '1') {
+                    if (one_seen && two_seen) {
+                        all_same = false;
+                        break;
+                    } else {
+                        one_seen = true;
+                    }
+                } else if (qName[qName.size() - 1] == '2') {
+                    two_seen = true;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
         }
     }
-    
+
+    seqan::close(bam);
+
+    /* Launch threads that do the actual work. */
     for (int j = 0; j < nthreads - 1; ++j) {
         threads.push_back(async(launch::async, &readSAMHelp,
                 file, filenumber,
                 lines / nthreads * j, lines / nthreads * (j + 1), j,
                 ref(exons), ref(matrix), unmatched_outfile, verbose,
-                ref(sem), rapmap, paired));
+                ref(sem), rapmap, paired, all_same));
     }
     threads.push_back(async(launch::async, &readSAMHelp,
             file, filenumber,
             lines / nthreads * (nthreads - 1), lines + 1, nthreads - 1,
             ref(exons), ref(matrix), unmatched_outfile, verbose,
-            ref(sem), rapmap, paired));
+            ref(sem), rapmap, paired, all_same));
 
     for (int i = 0; i < threads.size(); ++i) {
         if (threads[i].valid()) {
