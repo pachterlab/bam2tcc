@@ -196,21 +196,26 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
     }
 
     vector<int> temp;
-    vector<int> EC;
+    vector<int> ECforward;
+    vector<int> ECreverse;
     for (auto r = curr[0].begin(); r != curr[0].end(); ++r) {
         temp.clear();
         if (rapmap) {
-           temp = {r->rID};
+            temp = {r->rID};
         } else {
            temp = getEC(exons, cont, *r);
         }
-        EC.insert(EC.end(), temp.begin(), temp.end());
+        if (seqan::hasFlagRC(*r)) {
+            ECreverse.insert(ECreverse.end(), temp.begin(), temp.end());
+        } else {
+            ECforward.insert(ECforward.end(), temp.begin(), temp.end());
+        }
     }
-    sort(EC.begin(), EC.end());
-    EC.erase(unique(EC.begin(), EC.end()), EC.end());
 
+    vector<int> EC;
+    vector<int> EC2forward;
+    vector<int> EC2reverse;
     if (paired) {
-        vector<int> EC2;
         for (auto r = curr[1].begin(); r != curr[1].end(); ++r) {
             temp.clear();
             if (rapmap) {
@@ -218,22 +223,35 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
             } else {
                temp = getEC(exons, cont, *r);
             }
-            EC2.insert(EC2.end(), temp.begin(), temp.end());
-        }
-        sort(EC2.begin(), EC2.end());
-        EC2.erase(unique(EC2.begin(), EC2.end()), EC2.end());
-        
-        if (EC.size() == 0) {
-            EC = EC2;
-        } else if (EC2.size() != 0) {
-            temp.clear();
-            set_intersection(EC.begin(), EC.end(),
-                    EC2.begin(), EC2.end(), back_inserter(temp));
-            EC = temp;
-            sort(EC.begin(), EC.end());
-            EC.erase(unique(EC.begin(), EC.end()), EC.end());
+            if (seqan::hasFlagRC(*r)) {
+                EC2reverse.insert(EC2reverse.end(), temp.begin(), temp.end());
+            } else {
+                EC2forward.insert(EC2forward.end(), temp.begin(), temp.end());
+            }
         }
     }
+        
+    if ((ECforward.size() != 0 || ECreverse.size() != 0)
+            && (EC2forward.size() != 0 || EC2reverse.size() != 0)) {
+        sort(ECforward.begin(), ECforward.end());
+        sort(ECreverse.begin(), ECreverse.end());
+        sort(EC2forward.begin(), EC2forward.end());
+        sort(EC2reverse.begin(), EC2reverse.end());
+        set_intersection(ECforward.begin(), ECforward.end(),
+                EC2reverse.begin(), EC2reverse.end(), back_inserter(EC));
+        set_intersection(ECreverse.begin(), ECreverse.end(),
+                EC2forward.begin(), EC2forward.end(), back_inserter(EC));
+    } else {
+        if (ECforward.size() == 0 && ECreverse.size() == 0) {
+            ECforward = EC2forward;
+            ECreverse = EC2reverse;
+        }
+        ECforward.insert(ECforward.end(), ECreverse.begin(), ECreverse.end());
+        EC = ECforward;
+    }
+
+    sort(EC.begin(), EC.end());
+    EC.erase(unique(EC.begin(), EC.end()), EC.end());
     return EC;
 }
 
