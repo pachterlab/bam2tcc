@@ -82,7 +82,7 @@ int moar_zeroes(string infile, string outfile) {
 int count(string inname) {
     ifstream in(inname + ".tsv");
     if (!in.is_open()) {
-        cerr << "ERROR: unable to open" << inname << ".tsv" << endl;
+        cerr << "ERROR: unable to open " << inname << ".tsv" << endl;
         return 1;
     }
     
@@ -91,18 +91,24 @@ int count(string inname) {
     vector<string> tcc = parse_tsv(inp);
     
     vector<uint> count;
-    for (uint i = 1; i < tcc.size(); ++i) {
-        count.push_back((uint) stoi(tcc[i]));
+    for (uint i = 0; i < tcc.size(); ++i) {
+        if (is_number(tcc[i])) {
+            count.push_back((uint) stoi(tcc[i]));
+        } else {
+            count.push_back(0);
+        }
     }
     
     while (getline(in, inp)) {
         tcc = parse_tsv(inp);
-        for (uint i = 1; i < tcc.size(); ++i) {
-            count[i - 1] += (uint) (stoi(tcc[i]));
+        for (uint i = 0; i < tcc.size(); ++i) {
+            if (is_number(tcc[i])) {
+                count[i] += stoi(tcc[i]);
+            }
         }
     }
     
-    for (uint i = 0; i < tcc.size() - 1; ++i) {
+    for (uint i = 0; i < count.size(); ++i) {
         cout << count[i] << '\t';
     }
     cout << endl;
@@ -263,7 +269,7 @@ int transcript_ids(string infile, string outfile, string transcriptome) {
         }
         
         inp = lower(inp);
-        uint first_space = inp.find('.');
+        uint first_space = inp.find(' ');
         // Exclude the first character ('>') and the END CHAR.
         map->emplace(to_string(count), inp.substr(1, first_space - 1));
         ++count;

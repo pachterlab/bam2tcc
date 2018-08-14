@@ -14,6 +14,37 @@ using namespace std;
 typedef seqan::FormattedFileContext<seqan::BamFileIn, void>::Type TBamContext;
 
 /**
+ *
+ */
+string get_sam_pg(string filename) {
+    ifstream in(filename);
+    if (!in.is_open()) {
+        return "";
+    }
+    string pg;
+    string inp;
+    while (getline(in, inp)) {
+        if (inp.size() != 0 && inp.substr(0, 3).compare("@PG") == 0) {
+            int start = inp.find("ID:");
+            if (start == string::npos) {
+                break;
+            }
+            start += 3;
+            int end = inp.find('\t', start);
+            if (end == string::npos) {
+                break;
+            }
+            pg = inp.substr(start, end - start);
+            break;
+        } else if (inp.size() != 0 && inp[0] != '@') {
+            break;
+        }
+    }
+    in.close();
+    return pg;
+}
+
+/**
  * @brief Get total number of reads in a SAM/BAM file.
  *
  * Default is to not use SeqAn, since it seems to be slower.
@@ -196,10 +227,13 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
     }
 
     vector<int> temp;
+
     vector<int> ECforward;
     vector<int> ECreverse;
     for (auto r = curr[0].begin(); r != curr[0].end(); ++r) {
-        temp.clear();
+        if (seqan::hasFlagUnmapped(*r)) {
+            continue;
+        }
         if (rapmap) {
             temp = {r->rID};
         } else {
@@ -212,25 +246,25 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
         }
     }
 
-    vector<int> EC;
     vector<int> EC2forward;
     vector<int> EC2reverse;
-    if (paired) {
-        for (auto r = curr[1].begin(); r != curr[1].end(); ++r) {
-            temp.clear();
-            if (rapmap) {
-               temp = {r->rID};
-            } else {
-               temp = getEC(exons, cont, *r);
-            }
-            if (seqan::hasFlagRC(*r)) {
-                EC2reverse.insert(EC2reverse.end(), temp.begin(), temp.end());
-            } else {
-                EC2forward.insert(EC2forward.end(), temp.begin(), temp.end());
-            }
+    for (auto r = curr[1].begin(); r != curr[1].end(); ++r) {
+        if (seqan::hasFlagUnmapped(*r)) {
+            continue;
+        }
+        if (rapmap) {
+            temp = {r->rID};
+        } else {
+            temp = getEC(exons, cont, *r);
+        }
+        if (seqan::hasFlagRC(*r)) {
+            EC2reverse.insert(EC2reverse.end(), temp.begin(), temp.end());
+        } else {
+            EC2forward.insert(EC2forward.end(), temp.begin(), temp.end());
         }
     }
         
+    vector<int> EC;
     if ((ECforward.size() != 0 || ECreverse.size() != 0)
             && (EC2forward.size() != 0 || EC2reverse.size() != 0)) {
         sort(ECforward.begin(), ECforward.end());
@@ -361,9 +395,7 @@ int readSAMHelp(string file, int filenumber,
         }
         recqName = qName;
         while (qName.compare(recqName) == 0) {
-            if (!seqan::hasFlagUnmapped(rec)
-                    && !seqan::hasFlagNextUnmapped(rec)
-                    && !(paired && rec.rID != rec.rNextId)) {
+            if (!(paired && rec.rID != rec.rNextId)) {
                 if (seqan::hasFlagLast(rec)) {
                     curr[1].push_back(rec);
                 } else {
@@ -401,16 +433,23 @@ int readSAM(string file, int filenumber,
              string unmatched_outfile, int verbose, int nthreads,
              bool rapmap, bool paired) {
 
-    cout << "  Reading " << file << "..." << endl;
+    cout << "  Reading " << file << flush;
 
     vector<future<int>> threads;
     Semaphore sem;
     int lines = get_sam_line_count(file);
     if (lines == -1) {
-        cerr << "    ERROR: failed to open " << file << endl;
+        cerr << endl << "    ERROR: failed to open " << file << endl;
         return -1;
     }
-   
+
+    string pg = get_sam_pg(file);
+    if (pg.compare("rapmap") == 0) {
+        rapmap = true;
+        cout << " using format RapMap" << flush;
+    }
+    cout << "..." << endl;
+
     seqan::BamFileIn bam;
     if (!seqan::open(bam, file.c_str())) {
         cerr << "    ERROR: failed to open " << file << endl;
