@@ -8,7 +8,7 @@
 #include "kallisto_util.hpp"
 using namespace std;
 
-#define TRANSCRIPT_NAME_START_CHAR ' '
+#define TRANSCRIPT_NAME_START_CHAR '>'
 #define TRANSCRIPT_NAME_END_CHAR ' '
 
 int no_zeros(string inname, string outname) {
@@ -585,6 +585,38 @@ int gene_table(string infile, string outfile) {
     return 0;
 }
 
+int transcript_index(string transcriptome, string outfile) {
+    ifstream in(transcriptome);
+    if (!in.is_open()) {
+        cout << "Unable to open " << transcriptome << endl;
+        return -1;
+    }
+    ofstream out(outfile);
+    if (!out.is_open()) {
+        cout << "Unable to open " << outfile << endl;
+        return -1;
+    }
+    int count = 0;
+    string inp;
+    while (getline(in, inp)) {
+        if (inp.size() != 0 && inp[0] == '>') {
+            int start = inp.find(TRANSCRIPT_NAME_START_CHAR);
+            int end = inp.find(TRANSCRIPT_NAME_END_CHAR, start);
+            if (start == string::npos || end == string::npos) {
+                cerr << "  ERROR: unexpected input" << endl;
+                out << count << '\t' << "N/A" << endl;
+                ++count;
+            }
+            ++start;
+            out << count << '\t' << inp.substr(start, end - start) << endl;
+            ++count;
+        }
+    }
+    in.close();
+    out.close();
+    return 0;
+}
+
 int main(int argc, char **argv) {
     if (argc == 1) {
         cout << "no zeroes:    z infile outfile" << endl;
@@ -599,6 +631,7 @@ int main(int argc, char **argv) {
         cout << "EQ to TCC:    t infile outprefix transcriptome ref_ec" << endl;
         cout << "t names:      w intranscriptome outtranscriptome" << endl;
         cout << "gene table:   g ingtf outtable" << endl;
+        cout << "t index:      y transcriptome outtable" << endl;
         return 1;
     }
     char opt = argv[1][1];
@@ -630,6 +663,8 @@ int main(int argc, char **argv) {
         case 'w':   err = normal_transcriptome(argv[2], argv[3]);
                     break;
         case 'g':   err = gene_table(argv[2], argv[3]);
+                    break;
+        case 'y':   err = transcript_index(argv[2], argv[3]);
                     break;
     }
     

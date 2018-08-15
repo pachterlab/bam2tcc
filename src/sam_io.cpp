@@ -14,7 +14,7 @@ using namespace std;
 typedef seqan::FormattedFileContext<seqan::BamFileIn, void>::Type TBamContext;
 
 #define GENOMEBAM_DEBUG 1
-#define DEBUG 1
+#define DEBUG 0
 
 /**
  *
@@ -140,11 +140,6 @@ void get_alignment_exon_transcripts(const vector<Exon> &chrom,
                 && (j == 0 || read_exons[j].start == chrom[i].start)
                 && (j == read_exons.size() - 1
                     || read_exons[j].end == chrom[i].end)) {
-#if DEBUG
-                if (find(chrom[i].transcripts->begin(), chrom[i].transcripts->end(), 167719) != chrom[i].transcripts->end()) {
-                    cout << chrom[i].start << " <= " << read_exons[j].start << " < " << read_exons[j].end << " <= " << chrom[i].end << endl;
-                }
-#endif
                 read_exons[j].transcripts->insert(
                     read_exons[j].transcripts->end(),
                     chrom[i].transcripts->begin(), chrom[i].transcripts->end());
@@ -232,13 +227,16 @@ vector<int> getEC(const unordered_map<string, vector<Exon>*> &exons,
 vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
         TBamContext &cont, vector<vector<seqan::BamAlignmentRecord>> &curr,
         bool rapmap, bool paired) {
-#if DEBUG || GENOME_DEBUG
+#if DEBUG || GENOMEBAM_DEBUG
     string qname;
     if (curr[0].size() != 0) {
         qname = seqan::toCString(curr[0][0].qName);
     } else {
         qname = seqan::toCString(curr[1][0].qName);
     }
+#endif
+#if DEBUG
+    cout << endl << qname << ": " << curr[0].size() << '\t' << curr[1].size() << endl;
 #endif
     /* This only deals with orphaned reads, and not reads where one segment did
      * not map. */
@@ -266,6 +264,13 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
         } else {
            temp = getEC(exons, cont, *r);
         }
+#if DEBUG
+        cout << qname << " at " << r->beginPos << ": " << flush;
+        for (int i = 0; i < temp.size(); ++i) {
+            cout << temp[i] << '\t' << flush;
+        }
+        cout << endl;
+#endif
         if (seqan::hasFlagRC(*r)) {
             ECreverse.insert(ECreverse.end(), temp.begin(), temp.end());
         } else {
@@ -287,6 +292,13 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
         } else {
             temp = getEC(exons, cont, *r);
         }
+#if DEBUG
+        cout << qname << " at " << r->beginPos << ": " << flush;
+        for (int i = 0; i < temp.size(); ++i) {
+            cout << temp[i] << '\t' << flush;
+        }
+        cout << endl;
+#endif
         if (seqan::hasFlagRC(*r)) {
             EC2reverse.insert(EC2reverse.end(), temp.begin(), temp.end());
         } else {
