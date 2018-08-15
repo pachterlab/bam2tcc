@@ -13,6 +13,9 @@ using namespace std;
 
 typedef seqan::FormattedFileContext<seqan::BamFileIn, void>::Type TBamContext;
 
+#define GENOMEBAM_DEBUG 1
+#define DEBUG 1
+
 /**
  *
  */
@@ -133,7 +136,15 @@ void get_alignment_exon_transcripts(const vector<Exon> &chrom,
     for (uint i = 0; i < chrom.size(); ++i) {
         for (uint j = 0; j < read_exons.size(); ++j) {
             if (read_exons[j].start >= chrom[i].start
-                && read_exons[j].end <= chrom[i].end) {
+                && read_exons[j].end <= chrom[i].end
+                && (j == 0 || read_exons[j].start == chrom[i].start)
+                && (j == read_exons.size() - 1
+                    || read_exons[j].end == chrom[i].end)) {
+#if DEBUG
+                if (find(chrom[i].transcripts->begin(), chrom[i].transcripts->end(), 167719) != chrom[i].transcripts->end()) {
+                    cout << chrom[i].start << " <= " << read_exons[j].start << " < " << read_exons[j].end << " <= " << chrom[i].end << endl;
+                }
+#endif
                 read_exons[j].transcripts->insert(
                     read_exons[j].transcripts->end(),
                     chrom[i].transcripts->begin(), chrom[i].transcripts->end());
@@ -221,10 +232,23 @@ vector<int> getEC(const unordered_map<string, vector<Exon>*> &exons,
 vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
         TBamContext &cont, vector<vector<seqan::BamAlignmentRecord>> &curr,
         bool rapmap, bool paired) {
-
+#if DEBUG || GENOME_DEBUG
+    string qname;
+    if (curr[0].size() != 0) {
+        qname = seqan::toCString(curr[0][0].qName);
+    } else {
+        qname = seqan::toCString(curr[1][0].qName);
+    }
+#endif
+    /* This only deals with orphaned reads, and not reads where one segment did
+     * not map. */
     if (paired && (curr[0].size() == 0 || curr[1].size() == 0)) {
         return {};
     }
+
+#if GENOMEBAM_DEBUG
+    bool all_unmapped = true;
+#endif
 
     vector<int> temp;
 
@@ -234,6 +258,9 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
         if (seqan::hasFlagUnmapped(*r)) {
             continue;
         }
+#if GENOMEBAM_DEBUG
+        all_unmapped = false;
+#endif
         if (rapmap) {
             temp = {r->rID};
         } else {
@@ -252,6 +279,9 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
         if (seqan::hasFlagUnmapped(*r)) {
             continue;
         }
+#if GENOMEBAM_DEBUG
+        all_unmapped = false;
+#endif
         if (rapmap) {
             temp = {r->rID};
         } else {
@@ -267,6 +297,7 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
     vector<int> EC;
     if ((ECforward.size() != 0 || ECreverse.size() != 0)
             && (EC2forward.size() != 0 || EC2reverse.size() != 0)) {
+#if 0
         sort(ECforward.begin(), ECforward.end());
         sort(ECreverse.begin(), ECreverse.end());
         sort(EC2forward.begin(), EC2forward.end());
@@ -275,6 +306,15 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
                 EC2reverse.begin(), EC2reverse.end(), back_inserter(EC));
         set_intersection(ECreverse.begin(), ECreverse.end(),
                 EC2forward.begin(), EC2forward.end(), back_inserter(EC));
+#else
+        ECforward.insert(ECforward.end(), ECreverse.begin(), ECreverse.end());
+        EC2forward.insert(EC2forward.end(), EC2reverse.begin(),
+                EC2reverse.end());
+        sort(ECforward.begin(), ECforward.end());
+        sort(EC2forward.begin(), EC2forward.end());
+        set_intersection(ECforward.begin(), ECforward.end(),
+                EC2forward.begin(), EC2forward.end(), back_inserter(EC));
+#endif   
     } else {
         if (ECforward.size() == 0 && ECreverse.size() == 0) {
             ECforward = EC2forward;
@@ -286,6 +326,18 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
 
     sort(EC.begin(), EC.end());
     EC.erase(unique(EC.begin(), EC.end()), EC.end());
+#if GENOMEBAM_DEBUG
+    if (!all_unmapped && EC.size() == 0) {
+        cout << qname;
+    }
+#endif
+#if DEBUG
+    cout << qname << ": " << flush;
+    for (int i = 0; i < EC.size(); ++i) {
+        cout << EC[i] << '\t' << flush;
+    }
+    cout << endl;
+#endif
     return EC;
 }
 
