@@ -47,8 +47,10 @@ int main(int argc, char **argv) {
     usage +=                              "kallisto using transcriptome(s) ";
     usage +=                              "<fa>. Takes a comma-separated ";
     usage +=                              "of file names\n";
-    usage += "  -r, --rapmap               <SAM> is a RapMap \"lightweight\"";
-    usage +=                              " SAM/BAM file\n";
+    usage += "  -r, --rapmap               Indicate that the <SAM> is a RapMap";
+    usage +=                              " \"lightweight\" file. Program ";
+    usage +=                              "can also infer this from the header";
+    usage +=                              " tag @PG:ID \n";
     usage += "  -e, --ec <ec>              Output TCCs in the same order as in";
     usage +=                              " input file ec.\n";
     usage += "  --full-matrix              Output full (non-sparse) matrix. ";

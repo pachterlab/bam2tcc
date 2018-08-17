@@ -1,6 +1,7 @@
 #include <fstream>
 #include <iostream>
 #include <unordered_map>
+#include <unordered_set>
 #include <set>
 
 #include "util.hpp"
@@ -617,6 +618,179 @@ int transcript_index(string transcriptome, string outfile) {
     return 0;
 }
 
+/**
+ * Given a GFF file, checks that 1) it will not needlessly splice transcripts
+ * into exons, 2) it is grouped by chromosome, 3) it is grouped by
+ * transcript id, and 4) all exons are in order (within transcript, by strand).
+ *
+ * Also outputs the max number of exons per transcript.
+ *
+ * NOTE: only (2) and (3) do not rely on others to be true. All others rely on
+ * (3).
+ *
+ * @param gtf       Query GFF file.
+ * @param flag      0 to check all, n to stop as soon as requirement n failed.
+ * @return          -1 if error occurs, 0 if GFF file is proper, 1 if not.
+ */
+int checkGFF(string gtf, int flag=0) {
+    ifstream in(gtf);
+    if (!in.is_open()) {
+        cerr << "Unable to open " << gtf << endl;
+        return -1;
+    }
+
+    string input;
+    int line = 0;
+    unordered_set<string> chromosomes;
+    unordered_set<string> transcripts;
+    string curr_chrom;
+    string curr_transcript_id;
+    int prev_exon_end;
+    int exons = 0;
+    bool strand; /* True if +, false if -. */
+    bool properly_spliced = true;
+    bool grouped_chrom = true;
+    bool grouped_transcript = true;
+    bool exons_in_order = true;
+    int max_exons_per_transcript = 0;
+    while (getline(in, input)) {
+        ++line;
+        if (input.size() == 0 || input[0] == '#') {
+            continue;
+        }
+
+        vector<string> inp = parse_tsv(input);
+        
+        /* inp[2] is the feature type, i.e. exon, gene, transcript. */
+        if (inp[2].compare("exon") != 0) {
+            continue;
+        }
+
+        /* inp[0] is the name of the chromosome/scaffold. */
+        if (curr_chrom.compare(inp[0]) != 0) {
+            if (chromosomes.find(inp[0]) == chromosomes.end()) {
+                chromosomes.emplace(inp[0]);
+                curr_chrom = inp[0];
+            } else {
+                grouped_chrom = false;
+                if (flag == 2) {
+                    break;
+                }
+            }
+        }
+
+        /* inp[8] is the `attributes` field. */
+        string transcript_id;
+        string tofind = "transcript_id \"";
+        int start = inp[8].find(tofind);
+        if (start == string::npos) {
+            cerr << "Unable to find transcript ID on line " << line << endl;
+            return -1;
+        }
+        start += tofind.size();
+        int end = inp[8].find("\";", start);
+        transcript_id = inp[8].substr(start, end - start);
+
+        if (curr_transcript_id.compare(transcript_id) != 0) {
+            if (transcripts.find(transcript_id) == transcripts.end()) {
+                transcripts.emplace(transcript_id);
+                curr_transcript_id = transcript_id;
+                max_exons_per_transcript = max(max_exons_per_transcript, exons);
+                exons = 1;
+                /* inp[6] is the strand. */
+                if (inp[6].size() != 0 && inp[6][0] == '+') {
+                    strand = true;
+                } else if (inp[6].size() != 0 && inp[6][0] == '-') {
+                    strand = false;
+                } else {
+                    cerr << "Unable to parse " << inp[6] << " on line " << line;
+                    cerr << ". Expected either + or -." << endl;
+                    return -1;
+                }
+                /* inp[3] is the start of the entry, and inp[4] the end. */
+                if (strand && is_number(inp[4])) {
+                    prev_exon_end = stoi(inp[4]);
+                } else if (!strand && is_number(inp[3])) {
+                    prev_exon_end = stoi(inp[3]);
+                } else {
+                    cerr << "Unable to parse " << inp[3] << " or " << inp[4];
+                    cerr  << " on line " << line << ". Expected an int.";
+                    cerr << endl;
+                    return -1;
+                }
+            } else {
+                grouped_transcript = false;
+                if (flag == 3) {
+                    break;
+                }
+            }
+        }
+
+        /* inp[3] is the start of the entry, and inp[4] the end. */
+        else {
+            ++exons;
+
+            int exon_start;
+            if (strand && is_number(inp[3])) {
+                exon_start = stoi(inp[3]);
+            } else if (!strand && is_number(inp[4])) {
+                exon_start = stoi(inp[4]);
+            } else {
+                cerr << "Unable to parse " << inp[3] << " or " << inp[4];
+                cerr  << " on line " << line << ". Expected an int.";
+                cerr << endl;
+                return -1;
+            }
+
+            if (prev_exon_end == exon_start) {
+                properly_spliced = false;
+                if (flag == 1) {
+                    break;
+                }
+            } else if ((strand && prev_exon_end > exon_start) 
+                    || (!strand && prev_exon_end < exon_start)) {
+                exons_in_order = false;
+                if (flag == 4) {
+                    break;
+                }
+            } else if (strand && is_number(inp[4])) {
+                prev_exon_end = stoi(inp[4]);
+            } else if (!strand && is_number(inp[3])) {
+                prev_exon_end = stoi(inp[3]);
+            } else {
+                cerr << "Unable to parse " << inp[3] << " or " << inp[4];
+                cerr  << " on line " << line << ". Expected an int.";
+                cerr << endl;
+                return -1;
+            }
+        }
+    }
+
+    if (getline(in, input)) {
+        cout << "Stopped at line " << line << " (before end of file)." << endl;
+    } else {
+        cout << "At end of file." << endl;
+    }
+
+    cout << "No contiguous exons: " << flush;
+    if (properly_spliced) cout << "PASSED" << endl;
+    else cout << "FAILED" << endl;
+    cout << "Grouped by chromosome: " << flush;
+    if (grouped_chrom) cout << "PASSED" << endl;
+    else cout << "FAILED" << endl;
+    cout << "Grouped by transcript: " << flush;
+    if (grouped_transcript) cout << "PASSED" << endl;
+    else cout << "FAILED" << endl;
+    cout << "Exons in order: " << flush;
+    if (exons_in_order) cout << "PASSED" << endl;
+    else cout << "FAILED" << endl;
+    cout << "Max number of exons per transcript: " << max_exons_per_transcript;
+    cout << endl;
+
+    return properly_spliced && grouped_chrom && grouped_transcript
+        && exons_in_order;
+}
+
 int main(int argc, char **argv) {
     if (argc == 1) {
         cout << "no zeroes:    z infile outfile" << endl;
@@ -632,6 +806,7 @@ int main(int argc, char **argv) {
         cout << "t names:      w intranscriptome outtranscriptome" << endl;
         cout << "gene table:   g ingtf outtable" << endl;
         cout << "t index:      y transcriptome outtable" << endl;
+        cout << "Check GFF:    q GFF flag" << endl;
         return 1;
     }
     char opt = argv[1][1];
@@ -665,6 +840,8 @@ int main(int argc, char **argv) {
         case 'g':   err = gene_table(argv[2], argv[3]);
                     break;
         case 'y':   err = transcript_index(argv[2], argv[3]);
+                    break;
+        case 'q':   err = checkGFF(argv[2], (argc == 4) ? stoi(argv[3]) : 0);
                     break;
     }
     

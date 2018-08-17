@@ -17,7 +17,11 @@ typedef seqan::FormattedFileContext<seqan::BamFileIn, void>::Type TBamContext;
 #define DEBUG 0
 
 /**
- *
+ * @brief Get the value of the @PG:ID tag if present. Note: only works for SAM
+ * files. Does not use SeqAn because there is no way I've found to extract
+ * values from the header other than the @SQ fields.
+ * @param filename Name of query SAM file.
+ * @return         String value stored in tag, or empty string if not present.
  */
 string get_sam_pg(string filename) {
     ifstream in(filename);
@@ -137,10 +141,15 @@ void get_alignment_exon_transcripts(const vector<Exon> &chrom,
         for (uint j = 0; j < read_exons.size(); ++j) {
             if (read_exons[j].start >= chrom[i].start
                 && read_exons[j].end <= chrom[i].end
+#if !GENOMEBAM_DEBUG
+                /* Makes sure that transcripts fall exactly across the splice
+                 * junction. kallisto doesn't check this. */
                 && (j == 0 || read_exons[j].start == chrom[i].start)
                 && (j == read_exons.size() - 1
-                    || read_exons[j].end == chrom[i].end)) {
-                read_exons[j].transcripts->insert(
+                    || read_exons[j].end == chrom[i].end)
+#endif
+                                                        ) {
+               read_exons[j].transcripts->insert(
                     read_exons[j].transcripts->end(),
                     chrom[i].transcripts->begin(), chrom[i].transcripts->end());
             }
@@ -235,16 +244,19 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
         qname = seqan::toCString(curr[1][0].qName);
     }
 #endif
+
 #if DEBUG
     cout << endl << qname << ": " << curr[0].size() << '\t' << curr[1].size() << endl;
 #endif
-    /* This only deals with orphaned reads, and not reads where one segment did
-     * not map. */
+
+#if GENOMEBAM_DEBUG
+    /* kallisto doesn't allow orphaned reads. */
     if (paired && (curr[0].size() == 0 || curr[1].size() == 0)) {
         return {};
     }
+#endif
 
-#if GENOMEBAM_DEBUG
+#if DEBUG && GENOMEBAM_DEBUG
     bool all_unmapped = true;
 #endif
 
@@ -256,7 +268,7 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
         if (seqan::hasFlagUnmapped(*r)) {
             continue;
         }
-#if GENOMEBAM_DEBUG
+#if DEBUG && GENOMEBAM_DEBUG
         all_unmapped = false;
 #endif
         if (rapmap) {
@@ -284,7 +296,7 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
         if (seqan::hasFlagUnmapped(*r)) {
             continue;
         }
-#if GENOMEBAM_DEBUG
+#if DEBUG && GENOMEBAM_DEBUG
         all_unmapped = false;
 #endif
         if (rapmap) {
@@ -307,9 +319,19 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
     }
         
     vector<int> EC;
+#if GENOMEBAM_DEBUG
     if ((ECforward.size() != 0 || ECreverse.size() != 0)
             && (EC2forward.size() != 0 || EC2reverse.size() != 0)) {
-#if 0
+        /* kallisto doesn't care about which strand the segments align to. */
+        ECforward.insert(ECforward.end(), ECreverse.begin(), ECreverse.end());
+        EC2forward.insert(EC2forward.end(), EC2reverse.begin(),
+                EC2reverse.end());
+        sort(ECforward.begin(), ECforward.end());
+        sort(EC2forward.begin(), EC2forward.end());
+        set_intersection(ECforward.begin(), ECforward.end(),
+                EC2forward.begin(), EC2forward.end(), back_inserter(EC));
+#else
+    if (paired) {
         sort(ECforward.begin(), ECforward.end());
         sort(ECreverse.begin(), ECreverse.end());
         sort(EC2forward.begin(), EC2forward.end());
@@ -318,31 +340,29 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
                 EC2reverse.begin(), EC2reverse.end(), back_inserter(EC));
         set_intersection(ECreverse.begin(), ECreverse.end(),
                 EC2forward.begin(), EC2forward.end(), back_inserter(EC));
-#else
-        ECforward.insert(ECforward.end(), ECreverse.begin(), ECreverse.end());
-        EC2forward.insert(EC2forward.end(), EC2reverse.begin(),
-                EC2reverse.end());
-        sort(ECforward.begin(), ECforward.end());
-        sort(EC2forward.begin(), EC2forward.end());
-        set_intersection(ECforward.begin(), ECforward.end(),
-                EC2forward.begin(), EC2forward.end(), back_inserter(EC));
 #endif   
     } else {
+#if GENOMEBAM_DEBUG
         if (ECforward.size() == 0 && ECreverse.size() == 0) {
             ECforward = EC2forward;
             ECreverse = EC2reverse;
         }
+#endif
         ECforward.insert(ECforward.end(), ECreverse.begin(), ECreverse.end());
         EC = ECforward;
     }
 
     sort(EC.begin(), EC.end());
     EC.erase(unique(EC.begin(), EC.end()), EC.end());
-#if GENOMEBAM_DEBUG
+#if DEBUG && GENOMEBAM_DEBUG
+    /* Any read that shows up in genomebam without the `unmapped` flag should
+     * map to something here, too. Otherwise, kallisto can't give genomic
+     * coordinates in the first place. */
     if (!all_unmapped && EC.size() == 0) {
         cout << qname;
     }
 #endif
+
 #if DEBUG
     cout << qname << ": " << flush;
     for (int i = 0; i < EC.size(); ++i) {
@@ -350,6 +370,7 @@ vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
     }
     cout << endl;
 #endif
+
     return EC;
 }
 
@@ -459,7 +480,14 @@ int readSAMHelp(string file, int filenumber,
         }
         recqName = qName;
         while (qName.compare(recqName) == 0) {
+#if GENOMEBAM_DEBUG
             if (!(paired && rec.rID != rec.rNextId)) {
+#else
+            if (!(seqan::hasFlagMultiple(rec) && rec.rID != rec.rNextId)
+                && !seqan::hasFlagUnmapped(rec)
+                && !(seqan::hasFlagMultiple(rec)
+                    && !seqan::hasFlagAllProper(rec))) {
+#endif
                 if (seqan::hasFlagLast(rec)) {
                     curr[1].push_back(rec);
                 } else {
@@ -507,6 +535,9 @@ int readSAM(string file, int filenumber,
         return -1;
     }
 
+#if GENOMEBAM_DEBUG
+    cout << " with GENOMEBAM_DEBUG=true" << flush;
+#endif
     string pg = get_sam_pg(file);
     if (pg.compare("rapmap") == 0) {
         rapmap = true;
