@@ -12,9 +12,9 @@ EXENAME = thing
 OBJS = $(OBJDIR)/TCC_Matrix.o $(OBJDIR)/Read.o $(OBJDIR)/Transcript.o \
 $(OBJDIR)/common.o $(OBJDIR)/FileUtil.o $(OBJDIR)/Mapper.o
 
-all: main
+all: thing
 
-main: $(OBJDIR)/main.o $(OBJS) 
+thing: $(OBJDIR)/main.o $(OBJS) 
 	$(CXX) -o $(BINDIR)/$(EXENAME) $^ -pthread
 
 debug: $(OBJDIR)/debugUtil.o $(OBJS)
