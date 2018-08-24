@@ -52,6 +52,18 @@ int is_number(string s) {
     return s.find_first_not_of("0123456789") == string::npos;
 }
 
+vector<string> parse_by(string query, string by) {
+    vector<string>values;
+    int start = 0, end = query.find(by);
+    while (end != string::npos) {
+        values.push_back(query.substr(start, end - start));
+        start = end + by.length();
+        end = query.find(by, start);
+    }
+    values.push_back(query.substr(start, query.length() - end));
+    return values;
+}
+
 /**
  * @brief Parses a tab-separated string and returns fields as elements in a
  * vector.
@@ -60,6 +72,7 @@ int is_number(string s) {
  * @return          vector containing tab-separated fields of string
  */
 vector<string> parse_tsv(string tsv) {
+    return parse_by(tsv, "\t");
     vector<string> values;
     int start = 0, end = tsv.find('\t');
     while (end != string::npos) {
@@ -79,6 +92,7 @@ vector<string> parse_tsv(string tsv) {
  * @return          vector containing comma-separated fields of string
  */
 vector<string> parse_csv(string csv) {
+    return parse_by(csv, ",");
     vector<string> values;
     int start = 0, end = csv.find(',');
     while (end != string::npos) {

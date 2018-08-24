@@ -5,7 +5,41 @@
 #include "gff_io.hpp"
 #include "util.hpp"
 #include "kallisto_util.hpp"
+#include "SequenceNumID.hpp"
 using namespace std;
+
+/**
+ * Get the lines on which entries for new chromosomes/scaffolds start.
+ *
+ * @param gff       Query GFF file.
+ * @return          Vector of starting lines. Empty vector if function fails.
+ */
+vector<int> get_chrom_start(string gff) {
+    ifstream in(gff);
+    if (!in.is_open()) {
+        return {};
+    }
+    vector<int> lines;
+    int line = 0;
+    string curr;
+    string inp;
+    while (getline(in, inp)) {
+        ++line;
+        if (inp.size() == 0 || inp[0] == '#') {
+            continue;
+        }
+        int end = inp.find('\t');
+        if (end == string::npos) {
+            return {};
+        }
+        string chrom = inp.substr(0, end);
+        if (chrom.compare(curr) != 0) {
+            lines.push_back(line);
+            curr = chrom;
+        }
+    }
+    return lines;
+}
 
 /**
  * @brief Returns a vector containing all exons (values) in map.
@@ -52,8 +86,8 @@ int readGFF(string file, unordered_map<int, int> index_map,
     string prev_ref = "", prev_transcript_id = "";
     unordered_map<string, Exon> chrom;
     
-    int line_count = 0;
-    
+    int line_count = 0, exon = 0;
+
     seqan::GffFileIn gff;
     if (!seqan::open(gff, file.c_str())) {
         return -1;
@@ -88,6 +122,9 @@ int readGFF(string file, unordered_map<int, int> index_map,
                 if (prev_transcript_id.compare(transcript_id) != 0) {
                     ++transcript_count;
                     prev_transcript_id = transcript_id;
+                    exon = 0;
+                } else {
+                    ++exon;
                 }
                 
                 int id;
@@ -99,21 +136,22 @@ int readGFF(string file, unordered_map<int, int> index_map,
                         /* This shouldn't happen. If it does, it indicates a bug
                          * in the get_index_to_kallisto_index function in
                          * kallisto_util.cpp. */
-                        id = -1;
-                        cerr << endl << "    WARNING: unable to map GFF ";
+                        cerr << endl << "    ERROR: unable to map GFF ";
                         cerr << "transcript " << transcript_count;
-                        cerr << " to transcriptome. It will show up in EC as ";
-                        cerr << id <<  ".";
+                        cerr << " to transcriptome." << endl;
+                        return -1;
                     }
                 }
                 else {
                     id = transcript_count;
                 }
+
+                SequenceNumID numID = getSequenceNumID(id, exon);
                 
                 if (chrom.find(key) == chrom.end()) {
                     chrom.emplace(key, Exon(rec));
                 }
-                chrom.at(key).transcripts->push_back(id);
+                chrom.at(key).transcripts->push_back(numID);
             } else {
                 if (!chrom.empty()) {
                     exons.emplace(lower(prev_ref), map_values(chrom));
@@ -122,7 +160,8 @@ int readGFF(string file, unordered_map<int, int> index_map,
                 prev_ref = seqan::toCString(rec.ref);
                 ++transcript_count;
                 prev_transcript_id = transcript_id;
-                
+                exon = 0;
+
                 int id;
                 if (!index_map.empty()) {
                     try {
@@ -132,18 +171,20 @@ int readGFF(string file, unordered_map<int, int> index_map,
                         /* This shouldn't happen. If it does, it indicates a bug
                          * in the get_index_to_kallisto_index function in
                          * kallisto_util.cpp. */
-                        id = -1;
-                        cerr << endl << "    WARNING: unable to map GFF ";
+                        cerr << endl << "    ERROR: unable to map GFF ";
                         cerr << "transcript " << transcript_count;
-                        cerr << " to transcriptome. It will show up in EC as ";
-                        cerr << id <<  ".";
-                    }
+                        cerr << " to transcriptome." << endl;
+                        return -1;
+                   }
                 }
                 else {
                     id = transcript_count;
                 }
+
+                SequenceNumID numID = getSequenceNumID(id, exon);
+
                 chrom.emplace(key, Exon(rec));
-                chrom.at(key).transcripts->push_back(id);
+                chrom.at(key).transcripts->push_back(numID);
             }
         }
     }

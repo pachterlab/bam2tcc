@@ -9,12 +9,13 @@
 #include "sam_io.hpp"
 #include "util.hpp"
 #include "semaphore.hpp"
+#include "SequenceNumID.hpp"
 using namespace std;
 
 typedef seqan::FormattedFileContext<seqan::BamFileIn, void>::Type TBamContext;
 
-#define GENOMEBAM_DEBUG 1
-#define DEBUG 0
+#define GENOMEBAM_DEBUG 0
+#define DEBUG 1
 
 /**
  * @brief Get the value of the @PG:ID tag if present. Note: only works for SAM
@@ -190,21 +191,67 @@ vector<int> getEC(const unordered_map<string, vector<Exon>*> &exons,
     
     /* Take the intersection of all the transcripts the read exons aligned
      * to, which gives the equivalence class of this read. */
-    vector<int> inter(*read_exons[0].transcripts);
+    vector<SequenceNumID> inter(*read_exons[0].transcripts);
     sort(inter.begin(), inter.end()); 
     for (uint i = 1; i < read_exons.size(); ++i) {
-        vector<int> temp;
-        vector <int> *curr_transcripts = read_exons[i].transcripts;
+        vector<SequenceNumID> temp;
+        vector <SequenceNumID> *curr_transcripts = read_exons[i].transcripts;
         /* Sort transcripts in preparation for set_intersection. */
         sort(curr_transcripts->begin(), curr_transcripts->end());
         set_intersection(inter.begin(), inter.end(),
                          curr_transcripts->begin(), curr_transcripts->end(),
-                         back_inserter(temp));
+                         back_inserter(temp), compareSequenceNumID);
         inter = temp;
     }
-    /* Remove duplicates. inter is already sorted! */
-    inter.erase(unique(inter.begin(), inter.end()), inter.end());
-    return inter;
+    
+    /* Make sure that all exons spanning the section of the transcript aligned
+     * to are accounted for. */
+    if (inter.size() == 0) {
+        return {};
+    }
+
+    vector<int> EC;
+    int prevTranscript = getTranscriptID(inter[0]);
+    int prevExon = getExonIndex(inter[0]);
+    bool spans = true;
+    for (int i = 1; i < inter.size(); ++i) {
+        int transcript = getTranscriptID(inter[i]);
+        int exon = getExonIndex(inter[i]);
+        if (transcript == prevTranscript) {
+            if (prevExon + 1 != exon) {
+#if DEBUG
+                cout << "Spans is false at " << inter[i] << endl;
+#endif
+                spans = false;
+            }
+        } else {
+            if (spans) {
+                EC.push_back(prevTranscript);
+            }
+            prevTranscript = transcript;
+            prevExon = exon;
+            spans = true;
+        }
+    }
+    if (spans) {
+        EC.push_back(prevTranscript);
+    }
+
+#if DEBUG
+    if (inter.size() > 1 && inter.size() != EC.size()) {
+        cout << "Inter: " << flush;
+        for (int i = 0; i < inter.size(); ++i) {
+            cout << inter[i] << '\t';
+        }
+        cout << endl << "EC: " << flush;
+        for (int i = 0; i < EC.size(); ++i) {
+            cout << EC[i] << '\t';
+        }
+        cout << endl << endl;
+    }
+#endif
+
+    return EC;
 }
 
 /**
@@ -236,11 +283,18 @@ vector<int> getEC(const unordered_map<string, vector<Exon>*> &exons,
 vector<int> getReadEC(unordered_map<string, vector<Exon>*> &exons,
         TBamContext &cont, vector<vector<seqan::BamAlignmentRecord>> &curr,
         bool rapmap, bool paired) {
+
+#if DEBUG && !GENOMEBAM_DEBUG
+    if (curr[0].size() == 0 || (paired && curr[1].size() == 0)) {
+        return {};
+    }
+#endif
+
 #if DEBUG || GENOMEBAM_DEBUG
     string qname;
     if (curr[0].size() != 0) {
         qname = seqan::toCString(curr[0][0].qName);
-    } else {
+    } else if (curr[1].size() != 0) {
         qname = seqan::toCString(curr[1][0].qName);
     }
 #endif

@@ -7,24 +7,18 @@ BINDIR = bin
 CXX = g++
 CXXFLAGS = -g -I$(SEQAN_PATH)/include -Wall -ansi --std=c++14 
 
-EXENAME = main
+EXENAME = thing
 
-OBJS = $(OBJDIR)/TCC_Matrix.o $(OBJDIR)/gff_io.o $(OBJDIR)/sam_io.o \
-$(OBJDIR)/kallisto_util.o $(OBJDIR)/util.o 
+OBJS = $(OBJDIR)/TCC_Matrix.o $(OBJDIR)/Read.o $(OBJDIR)/Transcript.o \
+$(OBJDIR)/common.o $(OBJDIR)/FileUtil.o $(OBJDIR)/Mapper.o
 
 all: main
 
 main: $(OBJDIR)/main.o $(OBJS) 
 	$(CXX) -o $(BINDIR)/$(EXENAME) $^ -pthread
 
-debug: $(OBJDIR)/debug_util.o $(OBJDIR)/util.o $(OBJDIR)/kallisto_util.o \
-$(OBJDIR)/TCC_Matrix.o
-	$(CXX) -o $(BINDIR)/debug $^
-
-# File not on github. Used to decide whether multithreading would be worth it.
-# (It is.)
-#timing: $(OBJDIR)/timing_tests.o $(OBJS)
-#	$(CXX) -o $(BINDIR)/timing $^
+debug: $(OBJDIR)/debugUtil.o $(OBJS)
+	$(CXX) -o $(BINDIR)/debug $^ -pthread
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp
 	$(CXX) $(CXXFLAGS) -o $@ -c $<

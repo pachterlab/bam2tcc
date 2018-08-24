@@ -206,7 +206,20 @@ int main(int argc, char **argv) {
             return 1;
         }
     }
-    
+
+#if 0
+    for (auto it = exons->begin(); it != exons->end(); ++it) {
+        for (auto it2 = it->second->begin(); it2 != it->second->end(); ++it2) {
+           cout << it->first << ": Exon at " << it2->start << "," << it2->end << ": " << flush;
+           for (auto it3 = it2->transcripts->begin(); it3 != it2->transcripts->end(); ++it3) {
+                cout << *it3 << '\t' << flush;
+           }
+           cout << endl;
+        }
+    }
+    return 0;
+#endif
+
     cout << "Reading SAMs..." << endl;
     for (int i = 0; i < sam_files.size(); ++i) {
         readSAM(sam_files[i], i, *exons, *matrix, unmatched_out,

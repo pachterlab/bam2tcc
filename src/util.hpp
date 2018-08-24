@@ -14,6 +14,8 @@ uint64_t get_line_count(std::string filename);
 
 int is_number(std::string s);
 
+std::vector<std::string> parse_by(std::string query, std::string by);
+
 std::vector<std::string> parse_tsv(std::string tsv);
 
 std::vector<std::string> parse_csv(std::string csv);

@@ -632,11 +632,19 @@ int transcript_index(string transcriptome, string outfile) {
  * @param flag      0 to check all, n to stop as soon as requirement n failed.
  * @return          -1 if error occurs, 0 if GFF file is proper, 1 if not.
  */
-int checkGFF(string gtf, int flag=0) {
+int checkGFF(string gtf, int flag=0, string outfile="") {
     ifstream in(gtf);
     if (!in.is_open()) {
         cerr << "Unable to open " << gtf << endl;
         return -1;
+    }
+    ofstream out;
+    if (outfile.size() != 0) {
+        out.open(outfile);
+        if (!out.is_open()) {
+            cerr << "Unable to open " << outfile << endl;
+            return -1;
+        }
     }
 
     string input;
@@ -647,12 +655,14 @@ int checkGFF(string gtf, int flag=0) {
     string curr_transcript_id;
     int prev_exon_end;
     int exons = 0;
+    int exon_entries = 0;
     bool strand; /* True if +, false if -. */
     bool properly_spliced = true;
     bool grouped_chrom = true;
     bool grouped_transcript = true;
     bool exons_in_order = true;
     int max_exons_per_transcript = 0;
+    vector<int> exon_counts;
     while (getline(in, input)) {
         ++line;
         if (input.size() == 0 || input[0] == '#') {
@@ -665,6 +675,8 @@ int checkGFF(string gtf, int flag=0) {
         if (inp[2].compare("exon") != 0) {
             continue;
         }
+
+        ++exon_entries;
 
         /* inp[0] is the name of the chromosome/scaffold. */
         if (curr_chrom.compare(inp[0]) != 0) {
@@ -696,6 +708,7 @@ int checkGFF(string gtf, int flag=0) {
                 transcripts.emplace(transcript_id);
                 curr_transcript_id = transcript_id;
                 max_exons_per_transcript = max(max_exons_per_transcript, exons);
+                exon_counts.push_back(exons);
                 exons = 1;
                 /* inp[6] is the strand. */
                 if (inp[6].size() != 0 && inp[6][0] == '+') {
@@ -786,6 +799,13 @@ int checkGFF(string gtf, int flag=0) {
     else cout << "FAILED" << endl;
     cout << "Max number of exons per transcript: " << max_exons_per_transcript;
     cout << endl;
+    cout << "Total number of exon entries: " << exon_entries << endl;
+
+    if (outfile.size() != 0) {
+        for (int i = 1; i < exon_counts.size(); ++i) {
+            out << exon_counts[i] << endl;
+        }
+    }
 
     return properly_spliced && grouped_chrom && grouped_transcript
         && exons_in_order;
@@ -841,7 +861,8 @@ int main(int argc, char **argv) {
                     break;
         case 'y':   err = transcript_index(argv[2], argv[3]);
                     break;
-        case 'q':   err = checkGFF(argv[2], (argc == 4) ? stoi(argv[3]) : 0);
+        case 'q':   err = checkGFF(argv[2], (argc > 3) ? stoi(argv[3]) : 0,
+                        (argc == 5) ? argv[4] : "");
                     break;
     }
     
