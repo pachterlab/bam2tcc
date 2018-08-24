@@ -373,7 +373,7 @@ int main(int argc, char **argv) {
     /* Map and write */
     Mapper mapper(gff, bam, fa, paired);
     cout << "Mapping reads..." << endl;
-    mapper.mapReads(threads - 1);
+    mapper.mapReads(threads);
     cout << "Writing to file..." << endl;
     mapper.writeToFile(outprefix, full, ec);
 
