@@ -13,6 +13,7 @@
 #include "Transcript.hpp"
 #include "Semaphore.hpp"
 
+#define DEBUG 0
 #define TRANSCRIPT_ID_TAG "transcript_id"
 
 class Mapper {
@@ -25,6 +26,9 @@ private:
     Semaphore *readsSem;
     TCC_Matrix *matrix;
     bool paired;
+#if DEBUG
+    Semaphore *debugOutSem;
+#endif
     
     bool readGFF(ChromMetaInfo &inf, std::deque<Transcript> &chrom);
     bool readSAM(ChromMetaInfo &inf, std::deque<Transcript> &chrom,

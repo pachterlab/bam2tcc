@@ -8,8 +8,6 @@
 #include "common.hpp"
 using namespace std;
 
-#define DEBUG 0
-
 Mapper::Mapper(vector<string> gffs, vector<string> sams, vector<string> fas,
         bool paired) : gffs(gffs), sams(sams), paired(paired) {
     indexMap = new unordered_map<string, int>;
@@ -17,6 +15,9 @@ Mapper::Mapper(vector<string> gffs, vector<string> sams, vector<string> fas,
     reads = new unordered_map<string, Read*>;
     readsSem = new Semaphore();
     matrix = new TCC_Matrix(sams.size());
+#if DEBUG
+    debugOutSem = new Semaphore();
+#endif
 
     readTranscriptome(fas, *indexMap);
     getChromsGFFs();
@@ -108,9 +109,6 @@ vector<Exon> getAlignmentExons(const seqan::BamAlignmentRecord &alignment) {
 
 bool Mapper::readSAM(ChromMetaInfo &inf, deque<Transcript> &chrom,
         bool genomebam, bool rapmap, bool sameQName) {
-#if DEBUG
-    cout << "    Mapping..." << endl;
-#endif
     seqan::BamFileIn bam;
     if (!seqan::open(bam, sams[inf.samNum].c_str())) { return false; }
     int line = 0;
@@ -137,7 +135,8 @@ bool Mapper::readSAM(ChromMetaInfo &inf, deque<Transcript> &chrom,
                     && ((!genomebam && (!seqan::hasFlagMultiple(rec)
                         || (seqan::hasFlagAllProper(rec)
                             && rec.rID == rec.rNextId)))
-                    || (genomebam && (!paired || seqan::hasFlagMultiple(rec)))))
+                    || (genomebam && (!paired || (rec.rID == rec.rNextId
+                            && seqan::hasFlagMultiple(rec))))))
             {
                 vector<Exon> alignmentExons = getAlignmentExons(rec);
                 for (auto it = chrom.begin(); it != chrom.end(); ++it) {
@@ -175,21 +174,18 @@ bool Mapper::readSAM(ChromMetaInfo &inf, deque<Transcript> &chrom,
         readsSem->inc();
 
         if (complete) {
-#if DEBUG
-            cout << qName << " is complete at line " << line << ": " << endl;
-#endif
             string stringEC = read->getEC(paired, genomebam);
             if (stringEC.size() == 0) { /* Do something */ }
             else {
                 matrix->inc_TCC(stringEC, inf.samNum);
-#if DEBUG
-                cout << stringEC << endl;
-#endif
             }
             delete read;
         }
 
         ++line;
+#if DEBUG
+        cout << "." << flush;
+#endif
         if (line == inf.samEnd) { break; }
         readRecord(rec, bam);
     }
@@ -201,7 +197,17 @@ bool Mapper::mapToChrom(ChromMetaInfo &inf,
         bool genomebam, bool rapmap, bool sameQName,
         int thread, condition_variable &cv, mutex &m, queue<int> &completed) {
     deque<Transcript> *chrom = new deque<Transcript>;
+#if DEBUG
+    debugOutSem->dec();
+    cout << "    Thread " << thread << " reading GFF" << endl;
+    debugOutSem->inc();
+#endif
     if (!rapmap && !readGFF(inf, *chrom)) { return false; }
+#if DEBUG
+    debugOutSem->dec();
+    cout << "    Thread " << thread << " reading SAM" << endl;
+    debugOutSem->inc();
+#endif
     if (!readSAM(inf, *chrom, genomebam, rapmap, sameQName)) { return false; }
     delete chrom;
 
@@ -209,6 +215,12 @@ bool Mapper::mapToChrom(ChromMetaInfo &inf,
     completed.push(thread);
     m.unlock();
     cv.notify_one();
+
+#if DEBUG
+    debugOutSem->dec();
+    cout << "    Thread " << thread << " complete" << endl;
+    debugOutSem->inc();
+#endif
 
     return true;
 }       
@@ -382,6 +394,12 @@ bool Mapper::getPG(int filenumber, bool &genomebam, bool &rapmap) {
 }
 
 bool Mapper::mapReads(int nThreads) {
+    if (nThreads <= 0) {
+        cerr << "  ERROR: cannot run with nonpositive number of threads."
+            << endl;
+        return false;
+    }
+
     bool genomebam = false, rapmap = false, sameQName = false;
 
     condition_variable cv;
@@ -395,7 +413,9 @@ bool Mapper::mapReads(int nThreads) {
 
     for (int i = 0; i < sams.size(); ++i) {
 #if DEBUG
+        debugOutSem->dec();
         cout << "  Mapping " << sams[i] << endl;
+        debugOutSem->inc();
 #endif
         if (!getChromsSAM(i)) {
             cerr << "  WARNING: error while reading " << sams[i] << endl;
@@ -404,9 +424,6 @@ bool Mapper::mapReads(int nThreads) {
 
         for (auto chrom = chroms->begin(); chrom != chroms->end(); ++chrom) {
             if (!chrom->second.isSAMSet()) { continue; }
-#if DEBUG
-            cout << "    " << chrom->first << ": " << flush;
-#endif
             if (getSameQName(chrom->second.samNum, sameQName)
                     && getPG(chrom->second.samNum, genomebam, rapmap)) {
                 unique_lock<mutex> lk(m);
@@ -424,6 +441,12 @@ bool Mapper::mapReads(int nThreads) {
                 threads[done] = async(launch::async, &Mapper::mapToChrom, this,
                         ref(chrom->second), genomebam, rapmap, sameQName,
                         done, ref(cv), ref(m), ref(completed));
+#if DEBUG
+                debugOutSem->dec();
+                cout << "    Thread " << done << " launched on "
+                   <<  chrom->first << endl;
+                debugOutSem->inc();
+#endif
             } else {
                 cerr << "  WARNING: error reading chromosome "
                     << chrom->first << endl;
@@ -441,7 +464,7 @@ bool Mapper::mapReads(int nThreads) {
 
     cerr << reads->size() << " reads not completed." << flush;
     if (genomebam && sams.size() == 1) {
-        cerr << " Placing in TCC" << flush;
+        cerr << " Placing in TCC." << flush;
         for (auto it = reads->begin(); it != reads->end(); ++it) {
             string stringEC = it->second->getEC(paired, genomebam);
             if (stringEC.size() == 0) { /* Do something? */ }
