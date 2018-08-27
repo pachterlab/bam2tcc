@@ -8,7 +8,7 @@
 #include <mutex>
 #include <condition_variable>
 #include "TCC_Matrix.hpp"
-#include "ChromMetaInfo.hpp"
+#include "FileMetaInfo.hpp"
 #include "Read.hpp"
 #include "Transcript.hpp"
 #include "Semaphore.hpp"
@@ -21,28 +21,30 @@ private:
     std::vector<std::string> gffs;
     std::vector<std::string> sams;
     std::unordered_map<std::string, int> *indexMap;
-    std::unordered_map<std::string, ChromMetaInfo> *chroms;
-    std::unordered_map<std::string, Read*> *reads;
-    Semaphore *readsSem;
+    std::unordered_map<std::string, FileMetaInfo> chroms;
+    std::vector<std::unordered_map<std::string, Read*>*> reads;
+    std::vector<Semaphore*> readsSems;
     TCC_Matrix *matrix;
     bool paired;
 #if DEBUG
-    Semaphore *debugOutSem;
+    Semaphore debugOutSem;
 #endif
     
-    bool readGFF(ChromMetaInfo &inf, std::deque<Transcript> &chrom);
-    bool readSAM(ChromMetaInfo &inf, std::deque<Transcript> &chrom,
+    bool readGFF(FileMetaInfo &inf, std::deque<Transcript> &chrom);
+    bool readSAM(FileMetaInfo &inf, std::deque<Transcript> &chrom,
             bool genomebam, bool rapmap, bool sameQName);
-    bool mapToChrom(ChromMetaInfo &inf,
+    bool mapToChrom(FileMetaInfo &gffInf, FileMetaInfo samInf,
             bool genomebam, bool rapmap, bool sameQName,
             int thread, std::condition_variable &cv, std::mutex &m,
             std::queue<int> &completed);
     bool getChromsGFF(int filenumber, int &transcriptCount);
-    bool getChromsSAM(int filenumber);
+    bool getChromsSAM(int filenumber,
+            std::unordered_map<std::string, FileMetaInfo> &inf);
     bool getChromsGFFs();
     bool getSameQName(int filenumber, bool &same);
     std::string getSamPGName(int filenumber);
     bool getPG(int filenumber, bool &genomebam, bool &rapmap);
+    bool mapUnmapped(int samNum);
     bool writeCellsFiles(std::string outprefix);
 public:
     Mapper(std::vector<std::string> gffs, std::vector<std::string> sams,

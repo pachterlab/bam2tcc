@@ -2,51 +2,83 @@
 #include "Read.hpp"
 using namespace std;
 
+Read::Alignment::Alignment(int rName, int rNext, int pos, int nextPos,
+        bool first, bool reverse, const vector<int> &EC) : rName(rName),
+    rNext(rNext), pos(pos), nextPos(nextPos), first(first), reverse(reverse),
+    EC(EC) {}
+
+Read::Alignment::~Alignment() {}
+
+Read::Pair::Pair(const vector<int> &EC) : EC1(EC) {}
+
+Read::Pair::Pair(const vector<int> &EC1, const vector<int> &EC2) :
+    EC1(EC1), EC2(EC2) {}
+
+Read::Pair::~Pair() {}
+
 Read::Read() {}
 
-Read::Read(const seqan::BamAlignmentRecord &alignment) {
-    seen[0] = seen[1] = 0;
-    NH[0] = NH[1] = (seqan::hasFlagMultiple(alignment)) ? -1 : 0;
-    fillNH(alignment);
-    for (int i = 0; i < 4; ++i) {
-        ECs[i] = new vector<int>;
+Read::Read(const seqan::BamAlignmentRecord &alignment, const vector<int> &EC) {
+    paired = true;
+    seen[0] = 0;
+    seen[1] = 0;
+    NH[0] = -1;
+    NH[1] = -1;
+
+    if (!seqan::hasFlagMultiple(alignment)) {
+        paired = false;
+        NH[1] = 0;
     }
+    addAlignment(alignment, EC);
 }
 
-Read::~Read() {
-    for (int i = 0; i < 4; ++i) {
-        delete ECs[i];
+Read::~Read() {}
+
+int Read::getNH(const seqan::BamAlignmentRecord &alignment) {
+    if (seqan::hasFlagUnmapped(alignment)) {
+        return 1;
     }
-}
-
-int Read::needsNH() {
-    if (NH[0] == -1) { return 0; }
-    else if (NH[1] == -1) { return 1; }
-    else { return -1; }
-}
-
-void Read::fillNH(const seqan::BamAlignmentRecord &alignment) {
     seqan::BamTagsDict tags(alignment.tags);
-    int nh = 0, id;
+    int nh = 1, id;
     seqan::findTagKey(id, tags, "NH") && seqan::extractTagValue(nh, tags, id);
-    if (seqan::hasFlagLast(alignment)) {
-        NH[1] = nh;
-    } else {
-        NH[0] = nh;
-    }
+    return nh;
 }
 
-void Read::addEC(vector<int> &EC, bool first, bool reverse) {
-    int i;
-    if (first) {
-        ++seen[0];
-        i = 0;
-    } else {
-        ++seen[1];
-        i = 1;
+void Read::addAlignment(const seqan::BamAlignmentRecord &alignment,
+           const vector<int> &EC) {
+    int i = (!paired || seqan::hasFlagFirst(alignment)) ? 0 : 1;
+    ++seen[i];
+    if (NH[i] == -1) {
+        NH[i] = getNH(alignment);
     }
-    if (reverse) { i += 2; }
-    ECs[i]->insert(ECs[i]->end(), EC.begin(), EC.end());
+   
+    if (!paired) {
+        pairs.emplace_back(EC);
+        return;
+    }
+
+    auto a2 = alignments.begin();
+    while (a2 != alignments.end()) {
+        if (alignment.rID == a2->rName && alignment.rNextId == a2->rNext
+                && alignment.beginPos == a2->nextPos
+                && alignment.pNext == a2->pos
+                && seqan::hasFlagFirst(alignment) != a2->first) {
+            break;
+        }
+        ++a2;
+    }
+
+    if (a2 == alignments.end()) {
+        alignments.emplace_back(Alignment(alignment.rID, alignment.rNextId,
+                    alignment.beginPos, alignment.pNext,
+                    seqan::hasFlagFirst(alignment),
+                    seqan::hasFlagRC(alignment), EC));
+    } else {
+        if (seqan::hasFlagRC(alignment) != a2->reverse) {
+            pairs.emplace_back(a2->EC, EC);
+        }
+        alignments.erase(a2);
+    }
 }
 
 bool Read::isComplete() {
@@ -55,28 +87,19 @@ bool Read::isComplete() {
 
 string Read::getEC(bool paired, bool genomebam) {
     vector<int> EC;
-    for (int i = 0; i < 4; ++i) {
-        sort(ECs[i]->begin(), ECs[i]->end());
-    }
-    if (paired && (!genomebam || (ECs[0]->size() + ECs[2]->size() != 0
-                            && ECs[1]->size() + ECs[3]->size() != 0))) {
-        set_intersection(ECs[0]->begin(), ECs[0]->end(),
-            ECs[3]->begin(), ECs[3]->end(),
-            back_inserter(EC));
-        set_intersection(ECs[1]->begin(), ECs[1]->end(),
-            ECs[2]->begin(), ECs[2]->end(),
-            back_inserter(EC));
-    } else {
-        if (genomebam && ECs[0]->size() + ECs[2]->size() == 0) {
-            vector<int> *temp = ECs[0];
-            ECs[0] = ECs[1];
-            ECs[1] = temp;
-            temp = ECs[2];
-            ECs[2] = ECs[3];
-            ECs[3] = temp;
-        }
-        for (int i = 0; i < 3; i += 2) {
-            EC.insert(EC.end(), ECs[i]->begin(), ECs[i]->end());
+    for (auto p = pairs.begin(); p != pairs.end(); ++p) {
+        if (paired && (!genomebam
+                        || p->EC1.size() + p->EC2.size() != 0)) {
+            sort(p->EC1.begin(), p->EC1.end());
+            sort(p->EC2.begin(), p->EC2.end());
+            set_intersection(p->EC1.begin(), p->EC1.end(),
+                    p->EC2.begin(), p->EC2.end(),
+                    back_inserter(EC));
+        } else {
+            if (genomebam && p->EC1.size() == 0) {
+                p->EC1 = p->EC2;
+            }
+            EC.insert(EC.end(), p->EC1.begin(), p->EC1.end());
         }
     }
     sort(EC.begin(), EC.end());

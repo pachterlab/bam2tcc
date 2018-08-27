@@ -11,13 +11,11 @@ using namespace std;
 Mapper::Mapper(vector<string> gffs, vector<string> sams, vector<string> fas,
         bool paired) : gffs(gffs), sams(sams), paired(paired) {
     indexMap = new unordered_map<string, int>;
-    chroms = new unordered_map<string, ChromMetaInfo>;
-    reads = new unordered_map<string, Read*>;
-    readsSem = new Semaphore();
+    for (int i = 0; i < sams.size(); ++i) {
+        reads.push_back(new unordered_map<string, Read*>());
+        readsSems.push_back(new Semaphore);
+    }
     matrix = new TCC_Matrix(sams.size());
-#if DEBUG
-    debugOutSem = new Semaphore();
-#endif
 
     readTranscriptome(fas, *indexMap);
     getChromsGFFs();
@@ -25,21 +23,23 @@ Mapper::Mapper(vector<string> gffs, vector<string> sams, vector<string> fas,
 
 Mapper::~Mapper() {
     delete indexMap;
-    delete chroms;
-    for (auto it = reads->begin(); it != reads->end(); ++it) {
-        delete it->second;
+    for (auto it = reads.begin(); it != reads.end(); ++it) {
+        for (auto it2 = (*it)->begin(); it2 != (*it)->end(); ++it2) {
+            delete it2->second;
+        }
     }
-    delete reads;
-    delete readsSem;
+    for (auto it = readsSems.begin(); it != readsSems.end(); ++it) {
+        delete *it;
+    }
     delete matrix;
 }
 
-bool Mapper::readGFF(ChromMetaInfo &inf, deque<Transcript> &chrom) {
+bool Mapper::readGFF(FileMetaInfo &inf, deque<Transcript> &chrom) {
     seqan::GffFileIn gff;
-    if (!seqan::open(gff, gffs[inf.gffNum].c_str())) { return false; }
-    int line = 0, transcriptCount = inf.transcriptCount;
+    if (!seqan::open(gff, gffs[inf.fileNum].c_str())) { return false; }
+    int line = 0, transcriptCount = inf.count;
     seqan::GffRecord rec;
-    while (line < inf.gffStart) {
+    while (line < inf.start) {
         ++line;
         seqan::readRecord(rec, gff);
     }
@@ -75,7 +75,7 @@ bool Mapper::readGFF(ChromMetaInfo &inf, deque<Transcript> &chrom) {
             transcript.addExonEntry(rec);
         }
         ++line;
-        if (line == inf.gffEnd) { break; }
+        if (line == inf.end) { break; }
         seqan::readRecord(rec, gff);
     }
 
@@ -107,15 +107,15 @@ vector<Exon> getAlignmentExons(const seqan::BamAlignmentRecord &alignment) {
     return exons;
 }
 
-bool Mapper::readSAM(ChromMetaInfo &inf, deque<Transcript> &chrom,
+bool Mapper::readSAM(FileMetaInfo &inf, deque<Transcript> &chrom,
         bool genomebam, bool rapmap, bool sameQName) {
     seqan::BamFileIn bam;
-    if (!seqan::open(bam, sams[inf.samNum].c_str())) { return false; }
+    if (!seqan::open(bam, sams[inf.fileNum].c_str())) { return false; }
     int line = 0;
     seqan::BamAlignmentRecord rec;
     seqan::BamHeader head;
     seqan::readHeader(head, bam);
-    while (line < inf.samStart) {
+    while (line < inf.start) {
         ++line;
         readRecord(rec, bam);
     }
@@ -152,32 +152,26 @@ bool Mapper::readSAM(ChromMetaInfo &inf, deque<Transcript> &chrom,
             qName = qName.substr(0, qName.size() - 2);
         }
 
-        readsSem->dec();
+        readsSems[inf.fileNum]->dec();
         Read *read;
-        if (reads->find(qName) == reads->end()) {
-            read = new Read(rec);
-            reads->emplace(qName, read);
+        if (reads[inf.fileNum]->find(qName) == reads[inf.fileNum]->end()) {
+            read = new Read(rec, EC);
+            reads[inf.fileNum]->emplace(qName, read);
         } else {
-            read = reads->at(qName);
+            read = reads[inf.fileNum]->at(qName);
+            read->addAlignment(rec, EC);
         }
-        int needsNH = read->needsNH();
-        if (needsNH != -1 && (bool) needsNH == seqan::hasFlagLast(rec)) {
-            read->fillNH(rec);
-        }
-        read->addEC(EC,
-                (!seqan::hasFlagMultiple(rec) || seqan::hasFlagFirst(rec)),
-                seqan::hasFlagRC(rec));
         bool complete = read->isComplete();
         if (complete) {
-            reads->erase(qName);
+            reads[inf.fileNum]->erase(qName);
         }
-        readsSem->inc();
+        readsSems[inf.fileNum]->inc();
 
         if (complete) {
             string stringEC = read->getEC(paired, genomebam);
             if (stringEC.size() == 0) { /* Do something */ }
             else {
-                matrix->inc_TCC(stringEC, inf.samNum);
+                matrix->inc_TCC(stringEC, inf.fileNum);
             }
             delete read;
         }
@@ -186,29 +180,31 @@ bool Mapper::readSAM(ChromMetaInfo &inf, deque<Transcript> &chrom,
 #if DEBUG
         cout << "." << flush;
 #endif
-        if (line == inf.samEnd) { break; }
+        if (line == inf.end) { break; }
         readRecord(rec, bam);
     }
 
     return true;
 }
 
-bool Mapper::mapToChrom(ChromMetaInfo &inf,
+bool Mapper::mapToChrom(FileMetaInfo &gffInf, FileMetaInfo samInf,
         bool genomebam, bool rapmap, bool sameQName,
         int thread, condition_variable &cv, mutex &m, queue<int> &completed) {
     deque<Transcript> *chrom = new deque<Transcript>;
 #if DEBUG
-    debugOutSem->dec();
+    debugOutSem.dec();
     cout << "    Thread " << thread << " reading GFF" << endl;
-    debugOutSem->inc();
+    debugOutSem.inc();
 #endif
-    if (!rapmap && !readGFF(inf, *chrom)) { return false; }
+    if (!rapmap && !readGFF(gffInf, *chrom)) { return false; }
 #if DEBUG
-    debugOutSem->dec();
+    debugOutSem.dec();
     cout << "    Thread " << thread << " reading SAM" << endl;
-    debugOutSem->inc();
+    debugOutSem.inc();
 #endif
-    if (!readSAM(inf, *chrom, genomebam, rapmap, sameQName)) { return false; }
+    if (!readSAM(samInf, *chrom, genomebam, rapmap, sameQName)) {
+        return false;
+    }
     delete chrom;
 
     m.lock();
@@ -217,9 +213,9 @@ bool Mapper::mapToChrom(ChromMetaInfo &inf,
     cv.notify_one();
 
 #if DEBUG
-    debugOutSem->dec();
+    debugOutSem.dec();
     cout << "    Thread " << thread << " complete" << endl;
-    debugOutSem->inc();
+    debugOutSem.inc();
 #endif
 
     return true;
@@ -247,29 +243,25 @@ bool Mapper::getChromsGFF(int filenumber, int &transcriptCount) {
         string chrom = parsed[0], type = parsed[2];
         if (lower(type).compare("transcript") != 0) { ++transcriptCount; }
         if (chrom.compare(currChrom) != 0) {
-            chroms->emplace(currChrom, ChromMetaInfo(filenumber, start, line,
+            chroms.emplace(currChrom, FileMetaInfo(filenumber, start, line,
                         transcriptCount));
             start = line;
             currChrom = chrom;
         }
     }
-    chroms->emplace(currChrom, ChromMetaInfo(filenumber, start, line + 1,
+    chroms.emplace(currChrom, FileMetaInfo(filenumber, start, line + 1,
                 transcriptCount));
     ++transcriptCount;
     in.close();
     return true; 
 }
 
-bool Mapper::getChromsSAM(int filenumber) {
+bool Mapper::getChromsSAM(int filenumber,
+        unordered_map<string, FileMetaInfo> &inf) {
     ifstream in(sams[filenumber]);
     if (!in.is_open()) { return false; }
 
-    for (auto it = chroms->begin(); it != chroms->end(); ++it) {
-        it->second.clearSAMInfo();
-    }
-
     string inp, currChrom;
-    unordered_set<string> notInGFF;
     int line = 0, start;
     while(getline(in, inp)) {
         if (inp.size() == 0 || inp[0] == '@') { continue; }
@@ -286,34 +278,12 @@ bool Mapper::getChromsSAM(int filenumber) {
         string chrom = parseString(inp, "\t", 3)[2];
         if (chrom.compare("*") == 0) { continue; }
         if (chrom.compare(currChrom) != 0) {
-            auto it = chroms->find(currChrom);
-            if (it == chroms->end()) {
-                notInGFF.emplace(currChrom);
-            } else {
-                it->second.setSAM(filenumber, start, line);
-            }
+            inf.emplace(currChrom, FileMetaInfo(filenumber, start, line, -1));
             start = line;
             currChrom = chrom;
         }
     }
-    auto it = chroms->find(currChrom);
-    if (it == chroms->end()) {
-        notInGFF.emplace(currChrom);
-    } else {
-        it->second.setSAM(filenumber, start, line + 1);
-    }
-
-    if (!notInGFF.empty()) {
-        cerr << "  WARNING: " << notInGFF.size() << " chromosomes/scaffolds "
-            << "present in " << sams[filenumber] << " but not in GFFs:" << endl;
-        auto it = notInGFF.begin();
-        cerr << *it << flush;
-        while (it != notInGFF.end()) {
-            cerr << ',' << *it << flush;
-            ++it;
-        }
-        cerr << endl;
-    }
+    inf.emplace(currChrom, FileMetaInfo(filenumber, start, line + 1, -1));
 
     in.close();
     return true; 
@@ -393,6 +363,17 @@ bool Mapper::getPG(int filenumber, bool &genomebam, bool &rapmap) {
     return true;
 }
 
+bool Mapper::mapUnmapped(int fileNum) {
+    for (auto it = reads[fileNum]->begin(); it != reads[fileNum]->end();
+            ++it) {
+        string stringEC = it->second->getEC(paired, true);
+        if (stringEC.size() != 0) {
+            matrix->inc_TCC(stringEC, fileNum);
+        }
+    }
+    return true;
+}
+
 bool Mapper::mapReads(int nThreads) {
     if (nThreads <= 0) {
         cerr << "  ERROR: cannot run with nonpositive number of threads."
@@ -413,19 +394,21 @@ bool Mapper::mapReads(int nThreads) {
 
     for (int i = 0; i < sams.size(); ++i) {
 #if DEBUG
-        debugOutSem->dec();
+        debugOutSem.dec();
         cout << "  Mapping " << sams[i] << endl;
-        debugOutSem->inc();
+        debugOutSem.inc();
 #endif
-        if (!getChromsSAM(i)) {
+        unordered_map<string, FileMetaInfo> samsInf;
+        if (!getChromsSAM(i, samsInf)) {
             cerr << "  WARNING: error while reading " << sams[i] << endl;
             continue;
         }
 
-        for (auto chrom = chroms->begin(); chrom != chroms->end(); ++chrom) {
-            if (!chrom->second.isSAMSet()) { continue; }
-            if (getSameQName(chrom->second.samNum, sameQName)
-                    && getPG(chrom->second.samNum, genomebam, rapmap)) {
+        for (auto chrom = chroms.begin(); chrom != chroms.end(); ++chrom) {
+            auto sam = samsInf.find(chrom->first);
+            if (sam == samsInf.end()) { continue; }
+            if (getSameQName(i, sameQName)
+                    && getPG(i, genomebam, rapmap)) {
                 unique_lock<mutex> lk(m);
                 if (completed.empty()) {
                     cv.wait(lk, [&completed] { return !completed.empty(); });
@@ -439,19 +422,21 @@ bool Mapper::mapReads(int nThreads) {
                     }
                 }
                 threads[done] = async(launch::async, &Mapper::mapToChrom, this,
-                        ref(chrom->second), genomebam, rapmap, sameQName,
+                        ref(chrom->second), sam->second,
+                        genomebam, rapmap, sameQName,
                         done, ref(cv), ref(m), ref(completed));
 #if DEBUG
-                debugOutSem->dec();
+                debugOutSem.dec();
                 cout << "    Thread " << done << " launched on "
                    <<  chrom->first << endl;
-                debugOutSem->inc();
+                debugOutSem.inc();
 #endif
             } else {
                 cerr << "  WARNING: error reading chromosome "
                     << chrom->first << endl;
             }
         }
+
     }
 
     for (int i = 0; i < nThreads; ++i) {
@@ -462,20 +447,29 @@ bool Mapper::mapReads(int nThreads) {
         }
     }
 
-    cerr << reads->size() << " reads not completed." << flush;
-    if (genomebam && sams.size() == 1) {
-        cerr << " Placing in TCC." << flush;
-        for (auto it = reads->begin(); it != reads->end(); ++it) {
-            string stringEC = it->second->getEC(paired, genomebam);
-            if (stringEC.size() == 0) { /* Do something? */ }
-            else {
-                matrix->inc_TCC(stringEC, 0);
+    if (genomebam) {
+        for (int i = 0; i < reads.size(); ++i) {
+            if (!reads[i]->empty()) {
+                mapUnmapped(i);
             }
-            delete it->second;
         }
-        reads->clear();
     }
-    cerr << endl;
+#if DEBUG
+    else {
+        debugOutSem.dec();
+        for (int i = 0; i < reads.size(); ++i) {
+            if (reads[i]->empty()) { continue; }
+            cout << reads[i]->size() << " reads not complete in " << sams[i]
+                << ":" << endl;
+            cout << reads[i]->begin()->first << flush;
+            for (auto it = ++reads[i]->begin(); it != reads[i]->end(); ++it) {
+                cout << ',' << it->first << flush;
+            }
+            cout << endl;
+        }
+        debugOutSem.inc();
+    }
+#endif
 
     return true;
 }
