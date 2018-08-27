@@ -162,12 +162,12 @@ bool Mapper::readSAM(FileMetaInfo &inf, deque<Transcript> &chrom,
             read->addAlignment(rec, EC);
         }
         bool complete = read->isComplete();
-        if (complete) {
+        if (!genomebam && complete) {
             reads[inf.fileNum]->erase(qName);
         }
         readsSems[inf.fileNum]->inc();
 
-        if (complete) {
+        if (!genomebam && complete) {
             string stringEC = read->getEC(paired, genomebam);
             if (stringEC.size() == 0) { /* Do something */ }
             else {
