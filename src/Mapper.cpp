@@ -178,7 +178,7 @@ bool Mapper::readSAM(FileMetaInfo &inf, deque<Transcript> &chrom,
 
         ++line;
 #if DEBUG
-        cout << "." << flush;
+        //cout << "." << flush;
 #endif
         if (line == inf.end) { break; }
         readRecord(rec, bam);
@@ -306,6 +306,7 @@ bool Mapper::getSameQName(int filenumber, bool &same) {
     bool one_seen = false, two_seen = false;
     string inp;
     while (getline(in, inp)) {
+        if (inp.size() == 0 || inp[0] == '@') { continue; }
         string qName = parseString(inp, "\t", 1)[0];
         if (qName.size() < 2) {
             return true;;
@@ -319,7 +320,12 @@ bool Mapper::getSameQName(int filenumber, bool &same) {
                     one_seen = true;
                 }
             } else if (qName[qName.size() - 1] == '2') {
-                two_seen = true;
+                if (one_seen && two_seen) {
+                    same = false;
+                    break;
+                } else {
+                    two_seen = true;
+                }
             } else {
                 break;
             }
@@ -399,16 +405,22 @@ bool Mapper::mapReads(int nThreads) {
         debugOutSem.inc();
 #endif
         unordered_map<string, FileMetaInfo> samsInf;
-        if (!getChromsSAM(i, samsInf)) {
+        if (!getChromsSAM(i, samsInf) || !getSameQName(i, sameQName)
+                || !getPG(i, genomebam, rapmap)) {
             cerr << "  WARNING: error while reading " << sams[i] << endl;
             continue;
         }
 
+#if DEBUG
+        debugOutSem.dec();
+        cout << sams[i] << ": sameQName:" << sameQName << " genomebam:"
+            << genomebam << " rapmap:" << rapmap << endl;
+        debugOutSem.inc();
+#endif
+
         for (auto chrom = chroms.begin(); chrom != chroms.end(); ++chrom) {
             auto sam = samsInf.find(chrom->first);
-            if (sam == samsInf.end()) { continue; }
-            if (getSameQName(i, sameQName)
-                    && getPG(i, genomebam, rapmap)) {
+            if (sam != samsInf.end()) {
                 unique_lock<mutex> lk(m);
                 if (completed.empty()) {
                     cv.wait(lk, [&completed] { return !completed.empty(); });
@@ -431,9 +443,6 @@ bool Mapper::mapReads(int nThreads) {
                    <<  chrom->first << endl;
                 debugOutSem.inc();
 #endif
-            } else {
-                cerr << "  WARNING: error reading chromosome "
-                    << chrom->first << endl;
             }
         }
 
