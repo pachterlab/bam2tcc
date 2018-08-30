@@ -369,13 +369,15 @@ bool Mapper::getPG(int filenumber, bool &genomebam, bool &rapmap) {
     return true;
 }
 
-bool Mapper::mapUnmapped(int fileNum) {
-    for (auto it = reads[fileNum]->begin(); it != reads[fileNum]->end();
-            ++it) {
-        string stringEC = it->second->getEC(paired, true);
+bool Mapper::mapUnmapped(int fileNum, int start, int end, bool genomebam) {
+    auto it = reads[fileNum]->begin();
+    advance(it, start);
+    for (int i = start; i < end; ++i) {
+        string stringEC = it->second->getEC(paired, genomebam);
         if (stringEC.size() != 0) {
             matrix->inc_TCC(stringEC, fileNum);
         }
+        ++it;
     }
     return true;
 }
@@ -417,7 +419,6 @@ bool Mapper::mapReads(int nThreads) {
             << genomebam << " rapmap:" << rapmap << endl;
         debugOutSem.inc();
 #endif
-
         for (auto chrom = chroms.begin(); chrom != chroms.end(); ++chrom) {
             auto sam = samsInf.find(chrom->first);
             if (sam != samsInf.end()) {
@@ -445,40 +446,51 @@ bool Mapper::mapReads(int nThreads) {
 #endif
             }
         }
-
+        for (int j = 0; j < nThreads; ++j) {
+            if (threads[j].valid()) {
+                threads[j].wait();
+                if (!threads[j].get()) {
+                        cerr << "  WARNING: thread failed." << endl;
+                }
+                completed.push(j);
+            }
+        }
+        if (!reads[i]->empty()) {
+#if DEBUG
+            cout << reads[i]->size() << " unfinished. Placing in matrix now."
+                << endl;
+#endif
+            int perThread = reads[i]->size() / nThreads;
+            if (perThread < 20) {
+                int done = completed.front();
+                completed.pop();
+                threads[done] = async(launch::async, &Mapper::mapUnmapped, this,
+                        i, 0, reads[i]->size(), genomebam);
+            } else {
+                for (int j = 0; j < nThreads - 1; ++j) {
+                    int done = completed.front();
+                    completed.pop();
+                    threads[done] = async(launch::async, &Mapper::mapUnmapped,
+                            this,
+                            i, j * perThread, (j + 1) * perThread, genomebam);
+                }
+                int done = completed.front();
+                completed.pop();
+                threads[done] = async(launch::async, &Mapper::mapUnmapped, this,
+                        i, (nThreads - 1) * perThread, reads[i]->size(),
+                        genomebam);
+            }
+        }
     }
 
     for (int i = 0; i < nThreads; ++i) {
         if (threads[i].valid()) {
+            threads[i].wait();
             if (!threads[i].get()) {
-                    cerr << "  WARNING: thread failed." << endl;
+                cerr << "  WARNING: thread failed." << endl;
             }
         }
     }
-
-    if (genomebam) {
-        for (int i = 0; i < reads.size(); ++i) {
-            if (!reads[i]->empty()) {
-                mapUnmapped(i);
-            }
-        }
-    }
-#if DEBUG
-    else {
-        debugOutSem.dec();
-        for (int i = 0; i < reads.size(); ++i) {
-            if (reads[i]->empty()) { continue; }
-            cout << reads[i]->size() << " reads not complete in " << sams[i]
-                << ":" << endl;
-            cout << reads[i]->begin()->first << flush;
-            for (auto it = ++reads[i]->begin(); it != reads[i]->end(); ++it) {
-                cout << ',' << it->first << flush;
-            }
-            cout << endl;
-        }
-        debugOutSem.inc();
-    }
-#endif
 
     return true;
 }

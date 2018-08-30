@@ -44,7 +44,7 @@ private:
     bool getSameQName(int filenumber, bool &same);
     std::string getSamPGName(int filenumber);
     bool getPG(int filenumber, bool &genomebam, bool &rapmap);
-    bool mapUnmapped(int samNum);
+    bool mapUnmapped(int samNum, int start, int end, bool genomebam);
     bool writeCellsFiles(std::string outprefix);
 public:
     Mapper(std::vector<std::string> gffs, std::vector<std::string> sams,

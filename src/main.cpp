@@ -212,7 +212,7 @@ bool testOpen(string filename, int mode) {
         else { return false; }
     }
     else if (mode == 1) {
-        ofstream f(filename);
+        ofstream f(filename, ofstream::app);
         if (f.is_open()) {
             f.close();
             return true;
@@ -220,7 +220,7 @@ bool testOpen(string filename, int mode) {
         else { return false; }
     }
     else if (mode == 2) {
-        fstream f(filename);
+        fstream f(filename, ofstream::app);
         if (f.is_open()) {
             f.close();
             return true;
