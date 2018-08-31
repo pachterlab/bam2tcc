@@ -40,7 +40,7 @@ bool Transcript::mapsToTranscript(const vector<Exon> &alignmentExons,
                         || exon->end == alignmentExon->end)))) {
             aligning = true;
             ++alignmentExon;
-        } else if (aligning) {
+        } else if (aligning && !genomebam) {
             return false;
         }
     }

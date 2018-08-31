@@ -15,7 +15,7 @@ public:
     int getEnd();
     void addExonEntry(const seqan::GffRecord &entry);
     bool mapsToTranscript(const std::vector<Exon> &alignmentExons,
-            bool genomebam=false);
+            bool genomebam);
     bool operator<(const Transcript &other) const;
 };
 
