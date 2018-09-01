@@ -811,6 +811,156 @@ int checkGFF(string gtf, int flag=0, string outfile="") {
         && exons_in_order;
 }
 
+int timecourse1(string sam, string tsv, string outfile) {
+    ifstream in(sam);
+    if (!in.is_open()) {
+        cout << "Failed to open " << sam << endl;
+        return 1;
+    }
+    ifstream in2(tsv);
+    if (!in2.is_open()) {
+        cout << "Failed to open " << tsv << endl;
+        return 1;
+    }
+    ofstream out(outfile, ofstream::app);
+    if (!out.is_open()) {
+        cout << "Failed to open " << outfile << endl;
+        return 1;
+    }
+
+    string inp;
+    string prevQName;
+    int reads = 0;
+    int alignments = 0;
+    int alignedAlignments = 0;
+    unordered_map<string, int> chromosomeCounts;
+    while (getline(in, inp)) {
+        if (inp.size() == 0 || inp[0] == '@') {
+            continue;
+        }
+        vector<string> alignment = parseString(inp, "\t", 3);
+        ++alignments;
+        if (prevQName.compare(alignment[0])) {
+            prevQName = alignment[0];
+            ++reads;
+        }
+        if ((((uint) stoi(alignment[1])) & 0x4) == 0) {
+            ++alignedAlignments;
+        }
+        if (chromosomeCounts.find(alignment[2]) == chromosomeCounts.end()) {
+            chromosomeCounts.emplace(alignment[2], 1);
+        } else {
+            ++chromosomeCounts[alignment[2]];
+        }
+    }
+
+    int mapped = 0;
+    while (getline(in2, inp)) {
+        mapped += stoi(parseString(inp, "\t", 3)[2]);
+    }
+
+    out << alignedAlignments << '\t' << alignments << '\t' << reads << '\t'
+        << mapped << "\t" << chromosomeCounts.size() << '\t'
+        << "[time]" << endl;
+
+    in.close();
+    in2.close();
+    out.close();
+    return 0;
+}
+
+int pull_times(string log) {
+    ifstream in(log);
+    if (!in.is_open()) {
+        cout << "Unable to open " << log << endl;
+        return 1;
+    }
+    string inp;
+    while(getline(in, inp)) {
+        vector<string> vec = parseString(inp, ":", 0);
+        if (vec.size() != 3) {
+            continue;
+        }
+        cout << 3600 * stoi(vec[0]) + 60 * stoi(vec[1]) + stoi(vec[2]) << endl;
+    }
+    in.close();
+    return 0;
+}
+
+int timecourse(string sam, string tsv, string log, string outfile) {
+    ifstream in(sam);
+    if (!in.is_open()) {
+        cout << "Failed to open " << sam << endl;
+        return 1;
+    }
+    ifstream in2(tsv);
+    if (!in2.is_open()) {
+        cout << "Failed to open " << tsv << endl;
+        return 1;
+    }
+    ifstream in3(log);
+    if (!in3.is_open()) {
+        cout << "Failed to open " << log << endl;
+        return 1;
+    }
+    ofstream out(outfile, ofstream::app);
+    if (!out.is_open()) {
+        cout << "Failed to open " << outfile << endl;
+        return 1;
+    }
+
+    string inp;
+    string prevQName;
+    int reads = 0;
+    int alignments = 0;
+    int alignedAlignments = 0;
+    unordered_map<string, int> chromosomeCounts;
+    while (getline(in, inp)) {
+        if (inp.size() == 0 || inp[0] == '@') {
+            continue;
+        }
+        vector<string> alignment = parseString(inp, "\t", 3);
+        ++alignments;
+        if (prevQName.compare(alignment[0])) {
+            prevQName = alignment[0];
+            ++reads;
+        }
+        if ((((uint) stoi(alignment[1])) & 0x4) == 0) {
+            ++alignedAlignments;
+        }
+        if (chromosomeCounts.find(alignment[2]) == chromosomeCounts.end()) {
+            chromosomeCounts.emplace(alignment[2], 1);
+        } else {
+            ++chromosomeCounts[alignment[2]];
+        }
+    }
+
+    int mapped = 0;
+    while (getline(in2, inp)) {
+        mapped += stoi(parseString(inp, "\t", 3)[2]);
+    }
+   
+    int time = -1;
+    while(getline(in3, inp)) {
+        vector<string> vec = parseString(inp, ":", 0);
+        if (vec.size() != 3) {
+            continue;
+        }
+        time = 3600 * stoi(vec[0]) + 60 * stoi(vec[1]) + stoi(vec[2]);
+    }
+
+    out << alignedAlignments << '\t' << alignments << '\t' << reads << '\t'
+        << mapped << "\t" << chromosomeCounts.size() << '\t'
+        << time << endl;
+
+    in.close();
+    in2.close();
+    in3.close();
+    out.close();
+    return 0;
+}
+
+
 int main(int argc, char **argv) {
     if (argc == 1) {
         cout << "no zeroes:    z infile outfile" << endl;
@@ -827,6 +977,8 @@ int main(int argc, char **argv) {
         cout << "gene table:   g ingtf outtable" << endl;
         cout << "t index:      y transcriptome outtable" << endl;
         cout << "Check GFF:    q GFF flag" << endl;
+        cout << "Timecourse:   b insam intsv inlog outtsv" << endl;
+        cout << "Pull times:   u inlog" << endl;
         return 1;
     }
     char opt = argv[1][1];
@@ -863,6 +1015,10 @@ int main(int argc, char **argv) {
                     break;
         case 'q':   err = checkGFF(argv[2], (argc > 3) ? stoi(argv[3]) : 0,
                         (argc == 5) ? argv[4] : "");
+                    break;
+        case 'b':   err = timecourse(argv[2], argv[3], argv[4], argv[5]);
+                    break;
+        case 'u':   err = pull_times(argv[2]);
                     break;
     }
     
