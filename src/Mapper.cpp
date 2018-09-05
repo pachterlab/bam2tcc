@@ -9,11 +9,16 @@
 using namespace std;
 
 Mapper::Mapper(vector<string> gffs, vector<string> sams, vector<string> fas,
-        bool paired) : gffs(gffs), sams(sams), paired(paired) {
+        bool paired, bool recordUnmapped) : gffs(gffs), sams(sams),
+    paired(paired), recordUnmapped(recordUnmapped) {
     indexMap = new unordered_map<string, int>;
     for (int i = 0; i < sams.size(); ++i) {
         reads.push_back(new unordered_map<string, Read*>());
         readsSems.push_back(new Semaphore);
+        if (recordUnmapped) {
+            unmappedQNames.push_back(new unordered_set<string>);
+            unmappedQNamesSems.push_back(new Semaphore);
+        }
     }
     matrix = new TCC_Matrix(sams.size());
 
@@ -27,9 +32,20 @@ Mapper::~Mapper() {
         for (auto it2 = (*it)->begin(); it2 != (*it)->end(); ++it2) {
             delete it2->second;
         }
+        delete *it;
     }
     for (auto it = readsSems.begin(); it != readsSems.end(); ++it) {
         delete *it;
+    }
+    if (recordUnmapped) {
+        for (auto it = unmappedQNames.begin(); it != unmappedQNames.end(); ++it)
+        {
+            delete *it;
+        }
+        for (auto it = unmappedQNamesSems.begin();
+                it != unmappedQNamesSems.end(); ++it) {
+            delete *it;
+        }
     }
     delete matrix;
 }
@@ -169,7 +185,13 @@ bool Mapper::readSAM(FileMetaInfo &inf, deque<Transcript> &chrom,
 
         if (!genomebam && complete) {
             string stringEC = read->getEC(paired, genomebam);
-            if (stringEC.size() == 0) { /* Do something */ }
+            if (stringEC.size() == 0) {
+                if (recordUnmapped) {
+                    unmappedQNamesSems[inf.fileNum]->dec();
+                    unmappedQNames[inf.fileNum]->emplace(qName);
+                    unmappedQNamesSems[inf.fileNum]->inc();
+                }
+            }
             else {
                 matrix->inc_TCC(stringEC, inf.fileNum);
             }
@@ -258,6 +280,9 @@ bool Mapper::getChromsGFF(int filenumber, int &transcriptCount) {
 
 bool Mapper::getChromsSAM(int filenumber,
         unordered_map<string, FileMetaInfo> &inf) {
+    if (sams[filenumber].size() > 4 && sams[filenumber].substr(
+                sams[filenumber].size() - 4, sams[filenumber].size()).compare(
+                ".sam") == 0) {
     ifstream in(sams[filenumber]);
     if (!in.is_open()) { return false; }
 
@@ -284,8 +309,35 @@ bool Mapper::getChromsSAM(int filenumber,
         }
     }
     inf.emplace(currChrom, FileMetaInfo(filenumber, start, line + 1, -1));
-
     in.close();
+    } else {
+        seqan::BamFileIn bam;
+        if (!seqan::open(bam, sams[filenumber].c_str())) { return false; }
+        seqan::BamHeader head;
+        seqan::readHeader(head, bam);
+        seqan::BamAlignmentRecord rec;
+        string currChrom = "";
+        int line = 0, start = -1;
+        while (!seqan::atEnd(bam)) {
+            seqan::readRecord(rec, bam);
+            ++line;
+            if (rec.rID == seqan::BamAlignmentRecord::INVALID_REFID) {
+                continue;
+            }
+            if (currChrom.size() == 0) {
+                start = line;
+                currChrom = rec.rID;
+            } else if (currChrom.compare(seqan::toCString(
+                            seqan::getContigName(rec, bam)))) {
+                inf.emplace(currChrom,  FileMetaInfo(filenumber,
+                            start, line, -1));
+                start = line;
+                currChrom = seqan::toCString(seqan::getContigName(rec, bam));
+            }
+        }
+        inf.emplace(currChrom, FileMetaInfo(filenumber, start,
+                        line + 1, -1));
+    }
     return true; 
 }
 
@@ -300,6 +352,9 @@ bool Mapper::getChromsGFFs() {
 }
 
 bool Mapper::getSameQName(int filenumber, bool &same) {
+    if (sams[filenumber].size() > 4 && sams[filenumber].substr(
+                sams[filenumber].size() - 4, sams[filenumber].size()).compare(
+                ".sam") == 0) {
     ifstream in(sams[filenumber]);
     if (!in.is_open()) { return false; }
     same = true;
@@ -334,6 +389,42 @@ bool Mapper::getSameQName(int filenumber, bool &same) {
         }
     }
     in.close();
+    } else {
+        seqan::BamFileIn bam;
+        if (!seqan::open(bam, sams[filenumber].c_str())) { return false; }
+        same = true;
+        bool one_seen = false, two_seen = false;
+        seqan::BamHeader head;
+        seqan::readHeader(head, bam);
+        seqan::BamAlignmentRecord rec;
+        while (!seqan::atEnd(bam)) {
+            string qName = seqan::toCString(rec.qName);
+            if (qName.size() < 2) {
+                return true;;
+            }
+            if (!isdigit(qName[qName.size() - 2])) {
+                if (qName[qName.size() - 1] == '1') {
+                    if (one_seen && two_seen) {
+                        same = false;
+                        break;
+                    } else {
+                        one_seen = true;
+                    }
+                } else if (qName[qName.size() - 1] == '2') {
+                    if (one_seen && two_seen) {
+                        same = false;
+                        break;
+                    } else {
+                        two_seen = true;
+                    }
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+    }
     return true;
 }
 
@@ -374,7 +465,13 @@ bool Mapper::mapUnmapped(int fileNum, int start, int end, bool genomebam) {
     advance(it, start);
     for (int i = start; i < end; ++i) {
         string stringEC = it->second->getEC(paired, genomebam);
-        if (stringEC.size() != 0) {
+        if (stringEC.size() == 0) {
+            if (recordUnmapped) {
+                unmappedQNamesSems[fileNum]->dec();
+                unmappedQNames[fileNum]->emplace(it->first);
+                unmappedQNamesSems[fileNum]->inc();
+            }
+        } else {
             matrix->inc_TCC(stringEC, fileNum);
         }
         ++it;
@@ -382,14 +479,19 @@ bool Mapper::mapUnmapped(int fileNum, int start, int end, bool genomebam) {
     return true;
 }
 
-bool Mapper::mapReads(int nThreads) {
+bool Mapper::mapReads(int nThreads, bool pgProvided,
+        bool genomebam, bool rapmap) {
     if (nThreads <= 0) {
         cerr << "  ERROR: cannot run with nonpositive number of threads."
             << endl;
         return false;
     }
 
-    bool genomebam = false, rapmap = false, sameQName = false;
+    bool sameQName = false;
+    if (!pgProvided) {
+        genomebam = false;
+        rapmap = false;
+    }
 
     condition_variable cv;
     mutex m;
@@ -408,7 +510,11 @@ bool Mapper::mapReads(int nThreads) {
 #endif
         unordered_map<string, FileMetaInfo> samsInf;
         if (!getChromsSAM(i, samsInf) || !getSameQName(i, sameQName)
-                || !getPG(i, genomebam, rapmap)) {
+                || ((!pgProvided
+                    && sams[i].size() > 4 && sams[i].substr(
+                        sams[i].size() - 4, sams[i].size())
+                            .compare(".sam") == 0)
+                    && !getPG(i, genomebam, rapmap))) {
             cerr << "  WARNING: error while reading " << sams[i] << endl;
             continue;
         }
@@ -518,7 +624,40 @@ bool Mapper::writeCellsFiles(string outprefix) {
     return true;
 }
 
-bool Mapper::writeToFile(string outprefix, bool full, string ec) {
+bool Mapper::writeUnmapped(vector<string> &unmappedOut) {
+    bool sameQName;
+    for (int i = 0; i < unmappedOut.size(); ++i) {
+        ifstream in(sams[i]);
+        if (!in.is_open()) { return false; }
+        ofstream out(unmappedOut[i]);
+        if (!out.is_open()) { return false; }
+
+        if (!getSameQName(i, sameQName)) { return false; }
+
+        string inp;
+        while (getline(in, inp)) {
+            if (inp.size() == 0 || inp[0] == '@') {
+                out << inp << endl;
+            } else {
+                string qName = parseString(inp, "\t", 1)[0];
+                if (!sameQName) {
+                    qName = qName.substr(0, qName.size() - 2);
+                }
+                if (unmappedQNames[i]->find(qName) != unmappedQNames[i]->end())
+                {
+                    out << inp << endl;
+                }
+            }
+        }
+
+        in.close();
+        out.close();
+    }
+    return true;
+}
+
+bool Mapper::writeToFile(string outprefix,
+        vector<string> &unmappedOut, bool full, string ec) {
     if (ec.size() == 0) {
         if (full) { matrix->write_to_file(outprefix); }
         else { matrix->write_to_file_sparse(outprefix); }
@@ -530,6 +669,9 @@ bool Mapper::writeToFile(string outprefix, bool full, string ec) {
         else { matrix->write_to_file_in_order_sparse(outprefix, order, ecSet); }
     }
     writeCellsFiles(outprefix);
+    if (recordUnmapped && unmappedOut.size() != 0) {
+        writeUnmapped(unmappedOut);
+    }
     return true;
 }
 

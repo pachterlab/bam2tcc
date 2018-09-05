@@ -259,7 +259,8 @@ void usage() {
     << "  -p <threads>              Number of threads to use. Currently not "
     << "operational." << endl
     << "  --full-matrix             Output full (not sparse) matrix." << endl
-    << "  -u, --unmapped <SAM/BAM>  Output unmapped reads to file <SAM/BAM>."
+    << "  -u, --unmapped <SAM/BAM>  Output unmapped reads to files <SAM/BAM>."
+    << " Must provide one for each input SAM/BAM file."
     << endl
     << "  --check-gff               Check GFFs only." << endl
     << endl;
@@ -267,9 +268,10 @@ void usage() {
 
 int main(int argc, char **argv) {
     time_t startTime = time(0);
-    vector<string> gff, bam, fa;
-    string outprefix = "matrix", ec = "", unmapped = "";
-    bool paired = true, rapmap = false, full = false, checkGFFOnly = false;
+    vector<string> gff, bam, fa, unmapped;
+    string outprefix = "matrix", ec = "";
+    bool paired = true, full = false, checkGFFOnly = false,
+         pgProvided = false, genomebam = false, rapmap = false;
     int threads = 1;
     
     /* Parse options. */
@@ -283,11 +285,13 @@ int main(int argc, char **argv) {
         {"threads", required_argument, 0, 'p'},
         {"full-matrix", no_argument, no_argument, 'f'},
         {"unmapped", required_argument, 0, 'u'},
-        {"check-gff", no_argument, no_argument, 'G'}
+        {"check-gff", no_argument, no_argument, 'G'},
+        {"kallisto", no_argument, no_argument, 'k'},
+        {"RapMap", no_argument, no_argument, 'R'}
     };
     int opt_index = 0;
     while (true) {
-        int c = getopt_long(argc, argv, "g:S:o:Ut:p:e:fu:", opts, &opt_index);
+        int c = getopt_long(argc, argv, "g:S:o:Ut:p:e:fu:kR", opts, &opt_index);
         if (c == -1) { break; }
         switch (c) {
             case 'g':   gff = parseString(optarg, ",", 0); break;
@@ -298,14 +302,17 @@ int main(int argc, char **argv) {
             case 'p':   threads = atoi(optarg); break;
             case 'e':   ec = optarg; break;
             case 'f':   full = true; break;
-            case 'u':   unmapped = optarg; break;
-            case 'G':   checkGFFOnly = true;
+            case 'u':   unmapped = parseString(optarg, ",", 0); break;
+            case 'G':   checkGFFOnly = true; break;
+            case 'k':   genomebam = true; pgProvided = true; break;
+            case 'R':   rapmap = true; pgProvided = true; break;
         }
     }
 
     /* Make sure all required files are present. */
     if ((checkGFFOnly && gff.size() == 0)
-           || (!checkGFFOnly && bam.size() == 0)) {
+           || (!checkGFFOnly && bam.size() == 0)
+           || (unmapped.size() != 0 && unmapped.size() != bam.size())) {
         usage();
         return 1;
     }
@@ -358,6 +365,12 @@ int main(int argc, char **argv) {
             << endl;
         return 1;
     }
+    for (auto file = unmapped.begin(); file != unmapped.end(); ++file) {
+        if (!testOpen(*file, 1)) {
+            cerr << "ERROR: failed to open output file " << *file << endl;
+            return 1;
+        }
+    }
 
     /* Check GFF formatting. */
     cout << "Checking GFF formatting..." << endl;
@@ -371,12 +384,12 @@ int main(int argc, char **argv) {
     if (checkGFFOnly) { return 0; }
 
     /* Map and write */
-    Mapper mapper(gff, bam, fa, paired);
+    Mapper mapper(gff, bam, fa, paired, unmapped.size() != 0);
     cout << "Mapping reads..." << endl;
-    mapper.mapReads(threads);
+    mapper.mapReads(threads, pgProvided, genomebam, rapmap);
     cout << "Writing to file..." << endl;
-    mapper.writeToFile(outprefix, full, ec);
-
+    mapper.writeToFile(outprefix, unmapped, full, ec);
+    
     printTime(time(0) - startTime);
     return 0;
 }

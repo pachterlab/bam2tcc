@@ -24,8 +24,10 @@ private:
     std::unordered_map<std::string, FileMetaInfo> chroms;
     std::vector<std::unordered_map<std::string, Read*>*> reads;
     std::vector<Semaphore*> readsSems;
+    std::vector<std::unordered_set<std::string>*> unmappedQNames;
+    std::vector<Semaphore*> unmappedQNamesSems;
     TCC_Matrix *matrix;
-    bool paired;
+    bool paired, recordUnmapped;
 #if DEBUG
     Semaphore debugOutSem;
 #endif
@@ -46,12 +48,14 @@ private:
     bool getPG(int filenumber, bool &genomebam, bool &rapmap);
     bool mapUnmapped(int samNum, int start, int end, bool genomebam);
     bool writeCellsFiles(std::string outprefix);
+    bool writeUnmapped(std::vector<std::string> &unmappedOut);
 public:
     Mapper(std::vector<std::string> gffs, std::vector<std::string> sams,
-            std::vector<std::string> fas, bool paired);
+            std::vector<std::string> fas, bool paired, bool recordUnmapped);
     ~Mapper();
-    bool mapReads(int nThreads);
-    bool writeToFile(std::string outprefix, bool full, std::string ec);
+    bool mapReads(int nThreads, bool pgProvided, bool genomebam, bool rapmap);
+    bool writeToFile(std::string outprefix,
+            std::vector<std::string> &unmappedOut, bool full, std::string ec);
 };
 #endif
 
