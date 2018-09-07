@@ -960,6 +960,79 @@ int timecourse(string sam, string tsv, string log, string outfile) {
     return 0;
 }
 
+int categorizeUnmapped(string unmappedin, string output, bool sameQName,
+        bool genomebam) {
+    ifstream in(unmappedin);
+    if (!in.is_open()) {
+        cout << "Unable to open " << unmappedin << endl;
+        return false;
+    }
+    ofstream out(output, ofstream::app);
+    if (!out.is_open()) {
+        cout << "Unable to open " << output << endl;
+        return false;
+    }
+    string inp;
+    unordered_set<string> qNames;
+    while (getline(in, inp)) {
+        if (inp.size() == 0 || inp[0] == '@') { continue; }
+        vector<string> alignment = parseString(inp, "\t", 2);
+        if (!sameQName) {
+            alignment[0] = alignment[0].substr(0, alignment[0].size() - 2);
+        }
+        if (qNames.find(alignment[0]) != qNames.end()) { continue; }
+        out << alignment[0] << "\t";
+        uint flag = (uint) stoi(alignment[1]);
+        bool unmapped = flag & 0x04;
+        bool nextUnmapped = (flag & 0x01) && (flag & 0x08);
+        if (unmapped || nextUnmapped) {
+            if (genomebam) {
+                if (unmapped && nextUnmapped) {
+                    out << "unmapped" << endl;
+                } else {
+                    out << "mapped" << endl;
+                }
+            } else {
+                out << "unaligned" << endl;
+            }
+        } else {
+            out << "unmapped" << endl;
+        }
+        qNames.emplace(alignment[0]);
+    }
+    in.close();
+    out.close();
+    return true;
+}
+
+int getAllQNames(string sam, string outfile, bool sameQName) {
+    ifstream in(sam);
+    if (!in.is_open()) {
+        cout << "Unable to open " << sam << endl;
+        return false;
+    }
+    ofstream out(outfile);
+    if (!out.is_open()) {
+        cout << "Unable to open " << outfile << endl;
+        return false;
+    }
+    string inp;
+    unordered_set<string> allQNames;
+    while(getline(in, inp)) {
+        if (inp.size() == 0 || inp[0] == '@') { continue; }
+        string qName = parseString(inp, "\t", 1)[0];
+        if (!sameQName) {
+            qName = qName.substr(0, qName.size() - 2);
+        }
+        if (allQNames.find(qName) == allQNames.end()) {
+            out << qName << endl;
+            allQNames.emplace(qName);
+        }
+    }
+    in.close();
+    out.close();
+    return true;
+}
 
 int main(int argc, char **argv) {
     if (argc == 1) {
@@ -979,6 +1052,8 @@ int main(int argc, char **argv) {
         cout << "Check GFF:    q GFF flag" << endl;
         cout << "Timecourse:   b insam intsv inlog outtsv" << endl;
         cout << "Pull times:   u inlog" << endl;
+        cout << "Unmapped cat  o unmappedin output sameQName genomebam" << endl;
+        cout << "All QNAMEs    p insam output sameqName" << endl;
         return 1;
     }
     char opt = argv[1][1];
@@ -1019,6 +1094,12 @@ int main(int argc, char **argv) {
         case 'b':   err = timecourse(argv[2], argv[3], argv[4], argv[5]);
                     break;
         case 'u':   err = pull_times(argv[2]);
+                    break;
+        case 'o':   err = categorizeUnmapped(argv[2], argv[3],
+                            argv[4][0] == '1', argv[5][0] == '1');
+                    break;
+        case 'p':   err = getAllQNames(argv[2], argv[3],
+                            argv[4][0] == '1');
                     break;
     }
     

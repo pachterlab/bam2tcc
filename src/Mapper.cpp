@@ -19,6 +19,10 @@ Mapper::Mapper(vector<string> gffs, vector<string> sams, vector<string> fas,
             unmappedQNames.push_back(new unordered_set<string>);
             unmappedQNamesSems.push_back(new Semaphore);
         }
+#if READ_DIST
+        mappedQNames.push_back(new unordered_set<string>);
+        mappedQNamesSems.push_back(new Semaphore);
+#endif
     }
     matrix = new TCC_Matrix(sams.size());
 
@@ -47,6 +51,15 @@ Mapper::~Mapper() {
             delete *it;
         }
     }
+#if READ_DIST
+    for (auto it = mappedQNames.begin(); it != mappedQNames.end(); ++it) {
+        delete *it;
+    }
+    for (auto it = mappedQNamesSems.begin(); it != mappedQNamesSems.end(); ++it)
+    {
+        delete *it;
+    }
+#endif
     delete matrix;
 }
 
@@ -194,6 +207,11 @@ bool Mapper::readSAM(FileMetaInfo &inf, deque<Transcript> &chrom,
             }
             else {
                 matrix->inc_TCC(stringEC, inf.fileNum);
+#if READ_DIST
+                mappedQNamesSems[inf.fileNum]->dec();
+                mappedQNames[inf.fileNum]->emplace(qName);
+                mappedQNamesSems[inf.fileNum]->inc();
+#endif
             }
             delete read;
         }
@@ -473,6 +491,11 @@ bool Mapper::mapUnmapped(int fileNum, int start, int end, bool genomebam) {
             }
         } else {
             matrix->inc_TCC(stringEC, fileNum);
+#if READ_DIST
+            mappedQNamesSems[fileNum]->dec();
+            mappedQNames[fileNum]->emplace(it->first);
+            mappedQNamesSems[fileNum]->inc();
+#endif
         }
         ++it;
     }
@@ -656,8 +679,27 @@ bool Mapper::writeUnmapped(vector<string> &unmappedOut) {
     return true;
 }
 
+#if READ_DIST
+bool Mapper::writeMapped(vector<string> &mappedOut) {
+    for (int i = 0; i < mappedOut.size(); ++i) {
+        ofstream out(mappedOut[i]);
+        if (!out.is_open()) { return false; }
+        for (auto it = mappedQNames[i]->begin(); it != mappedQNames[i]->end();
+                ++it) {
+            out << *it << "\tmapped" << endl;
+        }
+        out.close();
+    }
+    return true;
+}
+#endif
+
 bool Mapper::writeToFile(string outprefix,
-        vector<string> &unmappedOut, bool full, string ec) {
+        vector<string> &unmappedOut,
+#if READ_DIST
+        vector<string> &mappedOut,
+#endif
+        bool full, string ec) {
     if (ec.size() == 0) {
         if (full) { matrix->write_to_file(outprefix); }
         else { matrix->write_to_file_sparse(outprefix); }
@@ -672,6 +714,9 @@ bool Mapper::writeToFile(string outprefix,
     if (recordUnmapped && unmappedOut.size() != 0) {
         writeUnmapped(unmappedOut);
     }
+#if READ_DIST
+    writeMapped(mappedOut);
+#endif
     return true;
 }
 
