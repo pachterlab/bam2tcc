@@ -85,7 +85,7 @@ bool Read::isComplete() {
     return NH[0] == seen[0] && NH[1] == seen[1];
 }
 
-string Read::getEC(bool paired, bool genomebam) {
+string Read::getEC(bool genomebam) {
     vector<int> EC;
     for (auto p = pairs.begin(); p != pairs.end(); ++p) {
         if (paired && (!genomebam

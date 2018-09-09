@@ -197,7 +197,7 @@ bool Mapper::readSAM(FileMetaInfo &inf, deque<Transcript> &chrom,
         readsSems[inf.fileNum]->inc();
 
         if (!genomebam && complete) {
-            string stringEC = read->getEC(paired, genomebam);
+            string stringEC = read->getEC(genomebam);
             if (stringEC.size() == 0) {
                 if (recordUnmapped) {
                     unmappedQNamesSems[inf.fileNum]->dec();
@@ -482,7 +482,7 @@ bool Mapper::mapUnmapped(int fileNum, int start, int end, bool genomebam) {
     auto it = reads[fileNum]->begin();
     advance(it, start);
     for (int i = start; i < end; ++i) {
-        string stringEC = it->second->getEC(paired, genomebam);
+        string stringEC = it->second->getEC(genomebam);
         if (stringEC.size() == 0) {
             if (recordUnmapped) {
                 unmappedQNamesSems[fileNum]->dec();

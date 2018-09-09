@@ -39,7 +39,7 @@ public:
     void addAlignment(const seqan::BamAlignmentRecord &alignment,
             const std::vector<int> &EC);
     bool isComplete();
-    std::string getEC(bool paired, bool genomebam=false);
+    std::string getEC(bool genomebam=false);
 };
 
 #endif
