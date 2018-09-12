@@ -270,7 +270,8 @@ void usage() {
     << "operational." << endl
     << "  --full-matrix             Output full (not sparse) matrix." << endl
     << "  -u, --unmapped <SAM/BAM>  Output unmapped reads to files <SAM/BAM>."
-    << " Must provide one for each input SAM/BAM file." << endl
+    << " Must provide one for each input SAM/BAM file. CURRENTLY ONLY WORKS "
+    << "WITH SAM FILES." << endl
 #if READ_DIST
     << "  -m, --mapped <SAM/BAM>    Output mapped reads to files <SAM/BAM>. "
     << "Must provide one for each input SAM/BAM file." << endl
@@ -340,7 +341,7 @@ int main(int argc, char **argv) {
            || (!checkGFFOnly && bam.size() == 0)
            || (unmapped.size() != 0 && unmapped.size() != bam.size())
 #if READ_DIST
-           || mapped.size() != bam.size()
+           || (mapped.size() != 0 && mapped.size() != bam.size())
 #endif
            ) {
         usage();

@@ -1057,6 +1057,34 @@ bool pullChroms(string insam, string outfile) {
     return true;
 }
 
+bool pullFlag(string insam, string outtsv) {
+    ifstream in(insam);
+    if (!in.is_open()) {
+        cerr << "Unable to open " << insam << endl;
+        return false;
+    }
+    ofstream out(outtsv);
+    if (!out.is_open()) {
+        cerr << "Unable to open " << outtsv << endl;
+        return false;
+    }
+    string inp;
+    unordered_set<string> qNames;
+    while(getline(in, inp)) {
+        if (inp.size() == 0 || inp[0] == '@') { continue; }
+        vector<string> inf = parseString(inp, "\t", 2);
+        if (qNames.find(inf[0]) != qNames.end()) { continue; }
+        uint flag = (uint) stoi(inf[1]);
+        if (flag & 0x02) {
+            out << inf[0] << '\t' << "proper" << endl;
+            qNames.emplace(inf[0]);
+        }
+    }
+    in.close();
+    out.close();
+    return true;
+}
+
 int main(int argc, char **argv) {
     if (argc == 1) {
         cout << "no zeroes:    z infile outfile" << endl;
@@ -1078,6 +1106,7 @@ int main(int argc, char **argv) {
         cout << "Unmapped cat  o unmappedin output sameQName genomebam" << endl;
         cout << "All QNAMEs    p insam output sameqName" << endl;
         cout << "Pull chrom:   a insam outfile" << endl;
+        cout << "Pull flag:    d insam outtsv" << endl;
         return 1;
     }
     char opt = argv[1][1];
@@ -1126,6 +1155,8 @@ int main(int argc, char **argv) {
                             argv[4][0] == '1');
                     break;
         case 'a':   err = pullChroms(argv[2], argv[3]);
+                    break;
+        case 'd':   err = pullFlag(argv[2], argv[3]);
                     break;
     }
     

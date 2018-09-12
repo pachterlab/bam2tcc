@@ -35,9 +35,6 @@ Read::Read(const seqan::BamAlignmentRecord &alignment, const vector<int> &EC) {
 Read::~Read() {}
 
 int Read::getNH(const seqan::BamAlignmentRecord &alignment) {
-    if (seqan::hasFlagUnmapped(alignment)) {
-        return 1;
-    }
     seqan::BamTagsDict tags(alignment.tags);
     int nh = 1, id;
     seqan::findTagKey(id, tags, "NH") && seqan::extractTagValue(nh, tags, id);

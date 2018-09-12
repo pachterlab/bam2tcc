@@ -167,7 +167,17 @@ bool Mapper::readSAM(FileMetaInfo &inf, deque<Transcript> &chrom,
                 cerr << "Unexpectedly unable to find REFID for "
                     << seqan::toCString(rec.qName) << endl;
             } else {
-                EC = {rec.rID};
+                int id = rec.rID;
+                if (indexMap->size()) {
+                    string transcript_id
+                        = seqan::toCString(seqan::getContigName(rec, bam));
+                    if (indexMap->find(transcript_id) == indexMap->end()) {
+                        id = -1;
+                    } else {
+                        id = indexMap->at(transcript_id);
+                    }
+                }
+                EC = {id};
             }
         } else {
             while (!chrom.empty()
@@ -225,6 +235,12 @@ bool Mapper::readSAM(FileMetaInfo &inf, deque<Transcript> &chrom,
                 matrix->inc_TCC(stringEC, inf.fileNum);
 #if READ_DIST
                 mappedQNamesSems[inf.fileNum]->dec();
+#if DEBUG
+                if (mappedQNames[inf.fileNum]->find(qName)
+                        != mappedQNames[inf.fileNum]->end()) {
+                    cerr << "Read " << qName << " twice!" << endl;
+                }
+#endif
                 mappedQNames[inf.fileNum]->emplace(qName);
                 mappedQNamesSems[inf.fileNum]->inc();
 #endif
@@ -514,6 +530,12 @@ bool Mapper::mapUnmapped(int fileNum, int start, int end, bool genomebam) {
             matrix->inc_TCC(stringEC, fileNum);
 #if READ_DIST
             mappedQNamesSems[fileNum]->dec();
+#if DEBUG
+            if (mappedQNames[fileNum]->find(it->first)
+                    != mappedQNames[fileNum]->end()) {
+                cerr << "Read " << it->first << " twice!" << endl;
+            }
+#endif
             mappedQNames[fileNum]->emplace(it->first);
             mappedQNamesSems[fileNum]->inc();
 #endif
@@ -767,7 +789,9 @@ bool Mapper::writeToFile(string outprefix,
         writeUnmapped(unmappedOut);
     }
 #if READ_DIST
-    writeMapped(mappedOut);
+    if (mappedOut.size() != 0) {
+        writeMapped(mappedOut);
+    }
 #endif
     return true;
 }
