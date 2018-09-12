@@ -263,7 +263,7 @@ void usage() {
     << "RapMap \"lightweight\" SAM/BAMs. Required for BAM files." << endl
     << "  -t, --transcriptome <fa>  Change transcript indexing to match that "
     << "of these comma-separated transcriptome files. Use to directly compare "
-    << "output to that of kalisto pseudo." << endl
+    << "output to that of kalisto pseudo. Not necessary for RapMap." << endl
     << "  -e <EC>                   Use the ECs in this file. Any additional "
     << "ECs will be appended." << endl
     << "  -p <threads>              Number of threads to use. Currently not "
@@ -422,9 +422,10 @@ int main(int argc, char **argv) {
     if (checkGFFOnly) { return 0; }
 
     /* Map and write */
-    Mapper mapper(gff, bam, fa, paired, unmapped.size() != 0);
+    Mapper mapper(gff, bam, fa, paired, unmapped.size() != 0,
+           pgProvided, genomebam, rapmap);
     cout << "Mapping reads..." << endl;
-    mapper.mapReads(threads, pgProvided, genomebam, rapmap);
+    mapper.mapReads(threads);
     cout << "Writing to file..." << endl;
     mapper.writeToFile(outprefix, unmapped,
 #if READ_DIST

@@ -1,8 +1,37 @@
 #include <iostream>
 #include <fstream>
+#include <seqan/bam_io.h>
 #include "FileUtil.hpp"
 #include "common.hpp"
 using namespace std;
+
+int getLineCountSAM(string filename) {
+    int count = 0;
+    if (hasSAMExt(filename)) {
+        ifstream in(filename);
+        if (!in.is_open()) { return -1; }
+        string inp;
+        while (getline(in, inp)) {
+            if (inp.size() != 0 && inp[0] != '@') { ++count; }
+        }
+    } else {
+        seqan::BamFileIn bam;
+        if (!seqan::open(bam, filename.c_str())) { return -1; }
+        seqan::BamHeader head;
+        seqan::readHeader(head, bam);
+        seqan::BamAlignmentRecord rec;
+        while (!seqan::atEnd(bam)) {
+            ++count;
+            seqan::readRecord(rec, bam);
+        }
+    }
+    return count;
+}
+
+bool hasSAMExt(string filename) {
+    return filename.size() > 4 && filename.substr(filename.size() - 4,
+            filename.size()).compare(".sam") == 0;
+}
 
 bool getECOrder(string ec, vector<string> &order,
         unordered_set<string> &ecSet) {

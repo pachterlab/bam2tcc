@@ -1034,6 +1034,29 @@ int getAllQNames(string sam, string outfile, bool sameQName) {
     return true;
 }
 
+bool pullChroms(string insam, string outfile) {
+    ifstream in(insam);
+    if (!in.is_open()) {
+        cerr << "Unable to open " << insam << endl;
+        return false;
+    }
+    ofstream out(outfile);
+    if (!out.is_open()) {
+        cerr << "Unable to open " << outfile << endl;
+        return false;
+    }
+    string inp;
+    int count = 0;
+    while (getline(in, inp)) {
+        if (inp.size() == 0 || inp[0] != '@') { break; }
+        if (inp.substr(0, 3).compare("@SQ") != 0) { continue; }
+        out << count << '\t'
+            << parseString(inp, "\t", 2)[1].substr(3, string::npos) << endl;
+        ++count;
+    }
+    return true;
+}
+
 int main(int argc, char **argv) {
     if (argc == 1) {
         cout << "no zeroes:    z infile outfile" << endl;
@@ -1054,6 +1077,7 @@ int main(int argc, char **argv) {
         cout << "Pull times:   u inlog" << endl;
         cout << "Unmapped cat  o unmappedin output sameQName genomebam" << endl;
         cout << "All QNAMEs    p insam output sameqName" << endl;
+        cout << "Pull chrom:   a insam outfile" << endl;
         return 1;
     }
     char opt = argv[1][1];
@@ -1100,6 +1124,8 @@ int main(int argc, char **argv) {
                     break;
         case 'p':   err = getAllQNames(argv[2], argv[3],
                             argv[4][0] == '1');
+                    break;
+        case 'a':   err = pullChroms(argv[2], argv[3]);
                     break;
     }
     

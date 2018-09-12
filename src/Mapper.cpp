@@ -1,3 +1,10 @@
+/**
+ * NOTE TO SELF and anyone else unfortunate enough to have to look at this code:
+ * everything is 0-indexed half-open intervals (i.e. [start, end)), since that's
+ * the general coding convention for everything, and also what SeqAn uses.
+ * EXCEPT FOR LINE NUMBERS, which are 1-indexed half-open. I don't know why I
+ * did that, but I know I'm too lazy to go back and change it.
+ */
 #include <seqan/gff_io.h>
 #include <seqan/bam_io.h>
 #include <fstream>
@@ -9,8 +16,10 @@
 using namespace std;
 
 Mapper::Mapper(vector<string> gffs, vector<string> sams, vector<string> fas,
-        bool paired, bool recordUnmapped) : gffs(gffs), sams(sams),
-    paired(paired), recordUnmapped(recordUnmapped) {
+        bool paired, bool recordUnmapped,
+        bool pgProvided, bool genomebam, bool rapmap) : gffs(gffs), sams(sams),
+        paired(paired), recordUnmapped(recordUnmapped), pgProvided(pgProvided),
+        genomebam(genomebam), rapmap(rapmap) {
     indexMap = new unordered_map<string, int>;
     for (int i = 0; i < sams.size(); ++i) {
         reads.push_back(new unordered_map<string, Read*>());
@@ -27,7 +36,9 @@ Mapper::Mapper(vector<string> gffs, vector<string> sams, vector<string> fas,
     matrix = new TCC_Matrix(sams.size());
 
     readTranscriptome(fas, *indexMap);
-    getChromsGFFs();
+    if (!(pgProvided && rapmap)) {
+        getChromsGFFs();
+    }
 }
 
 Mapper::~Mapper() {
@@ -152,7 +163,12 @@ bool Mapper::readSAM(FileMetaInfo &inf, deque<Transcript> &chrom,
     while (true) {
         vector<int> EC;
         if (rapmap) {
-            EC = {rec.rID};
+            if (rec.rID == seqan::BamAlignmentRecord::INVALID_REFID) {
+                cerr << "Unexpectedly unable to find REFID for "
+                    << seqan::toCString(rec.qName) << endl;
+            } else {
+                EC = {rec.rID};
+            }
         } else {
             while (!chrom.empty()
                 && chrom.front().getEnd() <= rec.beginPos) {
@@ -221,6 +237,10 @@ bool Mapper::readSAM(FileMetaInfo &inf, deque<Transcript> &chrom,
         //cout << "." << flush;
 #endif
         if (line == inf.end) { break; }
+        if (seqan::atEnd(bam)) {
+            cerr << "Motherfucking fuckity fuck at line " << line << endl;
+            break;
+        }
         readRecord(rec, bam);
     }
 
@@ -239,7 +259,11 @@ bool Mapper::mapToChrom(FileMetaInfo &gffInf, FileMetaInfo samInf,
     if (!rapmap && !readGFF(gffInf, *chrom)) { return false; }
 #if DEBUG
     debugOutSem.dec();
-    cout << "    Thread " << thread << " reading SAM" << endl;
+    cout << "    Thread " << thread << " reading SAM";
+    if (true) {
+        cout << " from " << samInf.start << " to " << samInf.end;
+    }
+    cout << endl;
     debugOutSem.inc();
 #endif
     if (!readSAM(samInf, *chrom, genomebam, rapmap, sameQName)) {
@@ -298,36 +322,34 @@ bool Mapper::getChromsGFF(int filenumber, int &transcriptCount) {
 
 bool Mapper::getChromsSAM(int filenumber,
         unordered_map<string, FileMetaInfo> &inf) {
-    if (sams[filenumber].size() > 4 && sams[filenumber].substr(
-                sams[filenumber].size() - 4, sams[filenumber].size()).compare(
-                ".sam") == 0) {
-    ifstream in(sams[filenumber]);
-    if (!in.is_open()) { return false; }
+    if (hasSAMExt(sams[filenumber])) {
+        ifstream in(sams[filenumber]);
+        if (!in.is_open()) { return false; }
 
-    string inp, currChrom;
-    int line = 0, start;
-    while(getline(in, inp)) {
-        if (inp.size() == 0 || inp[0] == '@') { continue; }
-        ++line;
-        string chrom = parseString(inp, "\t", 3)[2];
-        if (chrom.compare("*") == 0) { continue; }
-        currChrom = chrom;
-        start = line;
-        break;
-    } 
-    while(getline(in, inp)) {
-        if (inp.size() == 0 || inp[0] == '@') { continue; }
-        ++line;
-        string chrom = parseString(inp, "\t", 3)[2];
-        if (chrom.compare("*") == 0) { continue; }
-        if (chrom.compare(currChrom) != 0) {
-            inf.emplace(currChrom, FileMetaInfo(filenumber, start, line, -1));
-            start = line;
+        string inp, currChrom;
+        int line = 0, start;
+        while(getline(in, inp)) {
+            if (inp.size() == 0 || inp[0] == '@') { continue; }
+            ++line;
+            string chrom = parseString(inp, "\t", 3)[2];
+            if (chrom.compare("*") == 0) { continue; }
             currChrom = chrom;
+            start = line;
+            break;
         }
-    }
-    inf.emplace(currChrom, FileMetaInfo(filenumber, start, line + 1, -1));
-    in.close();
+        while(getline(in, inp)) {
+            if (inp.size() == 0 || inp[0] == '@') { continue; }
+            ++line;
+            string chrom = parseString(inp, "\t", 3)[2];
+            if (chrom.compare(currChrom) != 0) {
+                inf.emplace(currChrom,
+                        FileMetaInfo(filenumber, start, line, -1));
+                start = line;
+                currChrom = chrom;
+            }
+        }
+        inf.emplace(currChrom, FileMetaInfo(filenumber, start, line + 1, -1));
+        in.close();
     } else {
         seqan::BamFileIn bam;
         if (!seqan::open(bam, sams[filenumber].c_str())) { return false; }
@@ -335,26 +357,27 @@ bool Mapper::getChromsSAM(int filenumber,
         seqan::readHeader(head, bam);
         seqan::BamAlignmentRecord rec;
         string currChrom = "";
-        int line = 0, start = -1;
+        int line = 0, start;
         while (!seqan::atEnd(bam)) {
             seqan::readRecord(rec, bam);
             ++line;
+            string chrom;
             if (rec.rID == seqan::BamAlignmentRecord::INVALID_REFID) {
-                continue;
+                chrom = "*";
+            } else {
+                chrom = seqan::toCString(seqan::getContigName(rec, bam));
             }
             if (currChrom.size() == 0) {
                 start = line;
-                currChrom = rec.rID;
-            } else if (currChrom.compare(seqan::toCString(
-                            seqan::getContigName(rec, bam)))) {
-                inf.emplace(currChrom,  FileMetaInfo(filenumber,
-                            start, line, -1));
+                currChrom = chrom;
+            } else if (currChrom.compare(chrom) != 0) {
+                inf.emplace(currChrom,
+                        FileMetaInfo(filenumber, start, line, -1));
                 start = line;
-                currChrom = seqan::toCString(seqan::getContigName(rec, bam));
+                currChrom = chrom;
             }
         }
-        inf.emplace(currChrom, FileMetaInfo(filenumber, start,
-                        line + 1, -1));
+        inf.emplace(currChrom, FileMetaInfo(filenumber, start, line + 1, -1));
     }
     return true; 
 }
@@ -370,9 +393,7 @@ bool Mapper::getChromsGFFs() {
 }
 
 bool Mapper::getSameQName(int filenumber, bool &same) {
-    if (sams[filenumber].size() > 4 && sams[filenumber].substr(
-                sams[filenumber].size() - 4, sams[filenumber].size()).compare(
-                ".sam") == 0) {
+    if (hasSAMExt(sams[filenumber])) {
     ifstream in(sams[filenumber]);
     if (!in.is_open()) { return false; }
     same = true;
@@ -502,8 +523,7 @@ bool Mapper::mapUnmapped(int fileNum, int start, int end, bool genomebam) {
     return true;
 }
 
-bool Mapper::mapReads(int nThreads, bool pgProvided,
-        bool genomebam, bool rapmap) {
+bool Mapper::mapReads(int nThreads) {
     if (nThreads <= 0) {
         cerr << "  ERROR: cannot run with nonpositive number of threads."
             << endl;
@@ -532,12 +552,9 @@ bool Mapper::mapReads(int nThreads, bool pgProvided,
         debugOutSem.inc();
 #endif
         unordered_map<string, FileMetaInfo> samsInf;
-        if (!getChromsSAM(i, samsInf) || !getSameQName(i, sameQName)
-                || ((!pgProvided
-                    && sams[i].size() > 4 && sams[i].substr(
-                        sams[i].size() - 4, sams[i].size())
-                            .compare(".sam") == 0)
-                    && !getPG(i, genomebam, rapmap))) {
+        if ((!pgProvided && hasSAMExt(sams[i]) && !getPG(i, genomebam, rapmap))
+            || !getSameQName(i, sameQName)
+            || (!rapmap && !getChromsSAM(i, samsInf))) {
             cerr << "  WARNING: error while reading " << sams[i] << endl;
             continue;
         }
@@ -548,33 +565,68 @@ bool Mapper::mapReads(int nThreads, bool pgProvided,
             << genomebam << " rapmap:" << rapmap << endl;
         debugOutSem.inc();
 #endif
-        for (auto chrom = chroms.begin(); chrom != chroms.end(); ++chrom) {
-            auto sam = samsInf.find(chrom->first);
-            if (sam != samsInf.end()) {
-                unique_lock<mutex> lk(m);
-                if (completed.empty()) {
-                    cv.wait(lk, [&completed] { return !completed.empty(); });
-                }
-                int done = completed.front();
-                completed.pop();
-                lk.unlock();
-                if (threads[done].valid()) {
-                    if (!threads[done].get()) {
-                        cerr << "  WARNING: thread failed." << endl;
-                    }
-                }
-                threads[done] = async(launch::async, &Mapper::mapToChrom, this,
-                        ref(chrom->second), sam->second,
-                        genomebam, rapmap, sameQName,
-                        done, ref(cv), ref(m), ref(completed));
+ 
+       if (rapmap) {
+            int lines = getLineCountSAM(sams[i]);
+            if (lines == -1) {
+                cerr << "  WARNING: error while reading " << sams[i] << endl;
+                continue;
+            }
 #if DEBUG
-                debugOutSem.dec();
-                cout << "    Thread " << done << " launched on "
-                   <<  chrom->first << endl;
-                debugOutSem.inc();
+            debugOutSem.dec();
+            cout << lines << " lines in " << sams[i] << endl;
+            debugOutSem.inc();
 #endif
+            int perthread = lines / nThreads;
+            while (!completed.empty()) { completed.pop(); }
+            FileMetaInfo gffInf = FileMetaInfo(-1, -1, -1, -1);
+            for (int j = 0; j < nThreads - 1; ++j) {
+                FileMetaInfo samInf
+                    = FileMetaInfo(i, j * perthread + 1,
+                            (j + 1) * perthread + 1, -1);
+                threads[j] = async(launch::async, &Mapper::mapToChrom, this,
+                        ref(gffInf), samInf,
+                        genomebam, rapmap, sameQName,
+                        j, ref(cv), ref(m), ref(completed));
+            }
+            FileMetaInfo samInf = FileMetaInfo(i,
+                    (nThreads - 1) * perthread + 1, lines + 1, -1);
+            threads[nThreads - 1] = async(launch::async, &Mapper::mapToChrom,
+                    this, ref(gffInf), samInf,
+                    genomebam, rapmap, sameQName,
+                    nThreads - 1, ref(cv), ref(m), ref(completed));
+        } else {
+            for (auto chrom = chroms.begin(); chrom != chroms.end(); ++chrom) {
+                auto sam = samsInf.find(chrom->first);
+                if (sam != samsInf.end()) {
+                    unique_lock<mutex> lk(m);
+                    if (completed.empty()) {
+                        cv.wait(lk, [&completed] {
+                                return !completed.empty();
+                            });
+                    }
+                    int done = completed.front();
+                    completed.pop();
+                    lk.unlock();
+                    if (threads[done].valid()) {
+                        if (!threads[done].get()) {
+                            cerr << "  WARNING: thread failed." << endl;
+                        }
+                    }
+                    threads[done] = async(launch::async, &Mapper::mapToChrom,
+                            this, ref(chrom->second), sam->second,
+                            genomebam, rapmap, sameQName,
+                            done, ref(cv), ref(m), ref(completed));
+#if DEBUG
+                    debugOutSem.dec();
+                    cout << "    Thread " << done << " launched on "
+                       <<  chrom->first << endl;
+                  debugOutSem.inc();
+#endif
+                }
             }
         }
+
         for (int j = 0; j < nThreads; ++j) {
             if (threads[j].valid()) {
                 threads[j].wait();

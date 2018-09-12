@@ -14,7 +14,7 @@
 #include "Semaphore.hpp"
 
 #define DEBUG 0
-#define READ_DIST 1
+#define READ_DIST 0
 #define TRANSCRIPT_ID_TAG "transcript_id"
 
 class Mapper {
@@ -28,7 +28,7 @@ private:
     std::vector<std::unordered_set<std::string>*> unmappedQNames;
     std::vector<Semaphore*> unmappedQNamesSems;
     TCC_Matrix *matrix;
-    bool paired, recordUnmapped;
+    bool paired, recordUnmapped, pgProvided, genomebam, rapmap;
 #if READ_DIST
     std::vector<std::unordered_set<std::string>*> mappedQNames;
     std::vector<Semaphore*> mappedQNamesSems;
@@ -59,9 +59,10 @@ private:
 #endif
 public:
     Mapper(std::vector<std::string> gffs, std::vector<std::string> sams,
-            std::vector<std::string> fas, bool paired, bool recordUnmapped);
+            std::vector<std::string> fas, bool paired, bool recordUnmapped,
+            bool pgProvided, bool genomebam, bool rapmap);
     ~Mapper();
-    bool mapReads(int nThreads, bool pgProvided, bool genomebam, bool rapmap);
+    bool mapReads(int nThreads);
     bool writeToFile(std::string outprefix,
             std::vector<std::string> &unmappedOut,
 #if READ_DIST
