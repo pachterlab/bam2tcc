@@ -166,7 +166,10 @@ bool Mapper::readSAM(FileMetaInfo &inf, deque<Transcript> &chrom,
             if (rec.rID == seqan::BamAlignmentRecord::INVALID_REFID) {
                 cerr << "Unexpectedly unable to find REFID for "
                     << seqan::toCString(rec.qName) << endl;
-            } else {
+            } else if (!seqan::hasFlagUnmapped(rec)
+                    && (!seqan::hasFlagMultiple(rec)
+                        || (seqan::hasFlagAllProper(rec)
+                            && rec.rID == rec.rNextId))) {
                 int id = rec.rID;
                 if (indexMap->size()) {
                     string transcript_id
