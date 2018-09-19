@@ -29,7 +29,7 @@ Read::Read(const seqan::BamAlignmentRecord &alignment, const vector<int> &EC) {
         paired = false;
         NH[1] = 0;
     }
-    addAlignment(alignment, EC);
+    addAlignment(alignment, EC, false); // Value of genomebam doesn't matter.
 }
 
 Read::~Read() {}
@@ -42,7 +42,7 @@ int Read::getNH(const seqan::BamAlignmentRecord &alignment) {
 }
 
 void Read::addAlignment(const seqan::BamAlignmentRecord &alignment,
-           const vector<int> &EC) {
+           const vector<int> &EC, bool genomebam) {
     int i = (!paired || seqan::hasFlagFirst(alignment)) ? 0 : 1;
     ++seen[i];
     if (NH[i] == -1) {
@@ -71,7 +71,7 @@ void Read::addAlignment(const seqan::BamAlignmentRecord &alignment,
                     seqan::hasFlagFirst(alignment),
                     seqan::hasFlagRC(alignment), EC));
     } else {
-        if (seqan::hasFlagRC(alignment) != a2->reverse) {
+        if (genomebam || seqan::hasFlagRC(alignment) != a2->reverse) {
             pairs.emplace_back(a2->EC, EC);
         }
         alignments.erase(a2);

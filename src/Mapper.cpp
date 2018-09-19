@@ -189,12 +189,12 @@ bool Mapper::readSAM(FileMetaInfo &inf, deque<Transcript> &chrom,
             }
             if (chrom.empty()) { return true; }
 
-            if (!seqan::hasFlagUnmapped(rec)
-                    && ((!genomebam && (!seqan::hasFlagMultiple(rec)
+            if ((!genomebam && !seqan::hasFlagUnmapped(rec)
+                    && (!seqan::hasFlagMultiple(rec)
                         || (seqan::hasFlagAllProper(rec)
                             && rec.rID == rec.rNextId)))
                     || (genomebam && (!paired || (rec.rID == rec.rNextId
-                            && seqan::hasFlagMultiple(rec))))))
+                            && seqan::hasFlagMultiple(rec)))))
             {
                 vector<Exon> alignmentExons = getAlignmentExons(rec);
                 for (auto it = chrom.begin(); it != chrom.end(); ++it) {
@@ -217,7 +217,7 @@ bool Mapper::readSAM(FileMetaInfo &inf, deque<Transcript> &chrom,
             reads[inf.fileNum]->emplace(qName, read);
         } else {
             read = reads[inf.fileNum]->at(qName);
-            read->addAlignment(rec, EC);
+            read->addAlignment(rec, EC, genomebam);
         }
         bool complete = read->isComplete();
         if (!genomebam && complete) {
@@ -256,10 +256,6 @@ bool Mapper::readSAM(FileMetaInfo &inf, deque<Transcript> &chrom,
         //cout << "." << flush;
 #endif
         if (line == inf.end) { break; }
-        if (seqan::atEnd(bam)) {
-            cerr << "Motherfucking fuckity fuck at line " << line << endl;
-            break;
-        }
         readRecord(rec, bam);
     }
 
@@ -413,40 +409,40 @@ bool Mapper::getChromsGFFs() {
 
 bool Mapper::getSameQName(int filenumber, bool &same) {
     if (hasSAMExt(sams[filenumber])) {
-    ifstream in(sams[filenumber]);
-    if (!in.is_open()) { return false; }
-    same = true;
-    bool one_seen = false, two_seen = false;
-    string inp;
-    while (getline(in, inp)) {
-        if (inp.size() == 0 || inp[0] == '@') { continue; }
-        string qName = parseString(inp, "\t", 1)[0];
-        if (qName.size() < 2) {
-            return true;;
-        }
-        if (!isdigit(qName[qName.size() - 2])) {
-            if (qName[qName.size() - 1] == '1') {
+        ifstream in(sams[filenumber]);
+        if (!in.is_open()) { return false; }
+        same = true;
+        bool one_seen = false, two_seen = false;
+        string inp;
+        while (getline(in, inp)) {
+            if (inp.size() == 0 || inp[0] == '@') { continue; }
+            string qName = parseString(inp, "\t", 1)[0];
+            if (qName.size() < 2) {
+                return true;;
+            }
+            if (!isdigit(qName[qName.size() - 2])) {
+                if (qName[qName.size() - 1] == '1') {
                 if (one_seen && two_seen) {
-                    same = false;
-                    break;
+                        same = false;
+                        break;
+                    } else {
+                        one_seen = true;
+                    }
+                } else if (qName[qName.size() - 1] == '2') {
+                    if (one_seen && two_seen) {
+                        same = false;
+                        break;
+                    } else {
+                        two_seen = true;
+                    }
                 } else {
-                    one_seen = true;
-                }
-            } else if (qName[qName.size() - 1] == '2') {
-                if (one_seen && two_seen) {
-                    same = false;
                     break;
-                } else {
-                    two_seen = true;
                 }
             } else {
                 break;
             }
-        } else {
-            break;
         }
-    }
-    in.close();
+        in.close();
     } else {
         seqan::BamFileIn bam;
         if (!seqan::open(bam, sams[filenumber].c_str())) { return false; }
@@ -727,31 +723,59 @@ bool Mapper::writeCellsFiles(string outprefix) {
 bool Mapper::writeUnmapped(vector<string> &unmappedOut) {
     bool sameQName;
     for (int i = 0; i < unmappedOut.size(); ++i) {
-        ifstream in(sams[i]);
-        if (!in.is_open()) { return false; }
-        ofstream out(unmappedOut[i]);
-        if (!out.is_open()) { return false; }
+        if (hasSAMExt(sams[i])) {
+            ifstream in(sams[i]);
+            if (!in.is_open()) { return false; }
+            ofstream out(unmappedOut[i]);
+            if (!out.is_open()) { return false; }
+            if (!getSameQName(i, sameQName)) { return false; }
+    
+            string inp;
+            while (getline(in, inp)) {
+                if (inp.size() == 0 || inp[0] == '@') {
+                    out << inp << endl;
+                } else {
+                    vector<string> alignment = parseString(inp, "\t", 3);
+                    string qName = alignment[0];
+                    if (!sameQName) {
+                        qName = qName.substr(0, qName.size() - 2);
+                    }
+                    if (unmappedQNames[i]->find(qName)
+                                != unmappedQNames[i]->end()) {
+                        out << inp << endl;
+                    }
+                }
+            }
+    
+            in.close();
+            out.close();
+        } else {
+            seqan::BamFileIn in;
+            if (!seqan::open(in, sams[i].c_str())) { return false; }
+            seqan::BamFileOut out;
+            if (!seqan::open(out, unmappedOut[i].c_str())) { return false; }
+            if (!getSameQName(i, sameQName)) { return false; }
 
-        if (!getSameQName(i, sameQName)) { return false; }
+            seqan::BamHeader head;
+            seqan::readHeader(head, in);
+            seqan::writeHeader(out, head);
 
-        string inp;
-        while (getline(in, inp)) {
-            if (inp.size() == 0 || inp[0] == '@') {
-                out << inp << endl;
-            } else {
-                string qName = parseString(inp, "\t", 1)[0];
+            seqan::BamAlignmentRecord rec;
+            while(!seqan::atEnd(in)) {
+                seqan::readRecord(rec, in);
+                string qName = seqan::toCString(rec.qName);
                 if (!sameQName) {
                     qName = qName.substr(0, qName.size() - 2);
                 }
-                if (unmappedQNames[i]->find(qName) != unmappedQNames[i]->end())
-                {
-                    out << inp << endl;
+                if (unmappedQNames[i]->find(qName)
+                            != unmappedQNames[i]->end()) {
+                    seqan::writeRecord(out, rec);
                 }
             }
-        }
 
-        in.close();
-        out.close();
+            seqan::close(in);
+            seqan::close(out);
+        }
     }
     return true;
 }

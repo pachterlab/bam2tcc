@@ -973,33 +973,46 @@ int categorizeUnmapped(string unmappedin, string output, bool sameQName,
         return false;
     }
     string inp;
-    unordered_set<string> qNames;
+    unordered_map<string, int> qNames;
     while (getline(in, inp)) {
         if (inp.size() == 0 || inp[0] == '@') { continue; }
         vector<string> alignment = parseString(inp, "\t", 2);
         if (!sameQName) {
             alignment[0] = alignment[0].substr(0, alignment[0].size() - 2);
         }
-        if (qNames.find(alignment[0]) != qNames.end()) { continue; }
-        out << alignment[0] << "\t";
+
         uint flag = (uint) stoi(alignment[1]);
         bool unmapped = flag & 0x04;
         bool nextUnmapped = (flag & 0x01) && (flag & 0x08);
+        int val = -1;
         if (unmapped || nextUnmapped) {
             if (genomebam) {
-                if (unmapped && nextUnmapped) {
-                    out << "unmapped" << endl;
-                } else {
-                    out << "mapped" << endl;
-                }
-            } else {
-                out << "unaligned" << endl;
-            }
+                if (unmapped && nextUnmapped) { val = 0; }
+                else { val = 2; }
+            } else { val = 0; }
         } else {
-            out << "unmapped" << endl;
+            if (genomebam) { val = 2; }
+            else { val = 1; }
         }
-        qNames.emplace(alignment[0]);
+        
+        if (qNames.find(alignment[0]) == qNames.end()) {
+            qNames.emplace(alignment[0], val);
+        } else {
+            qNames[alignment[0]] = max(qNames[alignment[0]], val);
+        }
     }
+
+    for (auto it = qNames.begin(); it != qNames.end(); ++it) {
+        out << it->first << '\t';
+        switch(it->second) {
+            case 0: out << "unmapped/unaligned"; break;
+            case 1: out << "unmapped/aligned"; break;
+            case 2: out << "mapped"; break;
+            default: out << "NA"; break;
+        }
+        out << endl;
+    }
+
     in.close();
     out.close();
     return true;
@@ -1085,6 +1098,55 @@ bool pullFlag(string insam, string outtsv) {
     return true;
 }
 
+int pullReadsNotIn(string infa, string exclude, string outfile, bool sameQName)
+{
+    ifstream in(infa);
+    if (!in.is_open()) {
+        cerr << "Unable to open " << infa << endl;
+        return false;
+    }
+    ifstream exc(exclude);
+    if (!exc.is_open()) {
+        cerr << "Unable to open " << exclude << endl;
+        return false;
+    }
+    ofstream out(outfile);
+    if (!out.is_open()) {
+        cerr << "Unable to open " << outfile << endl;
+        return false;
+    }
+    string inp;
+
+    unordered_set<string> toexclude;
+    while(getline(exc, inp)) {
+        toexclude.emplace(inp);
+    }
+
+    while(getline(in, inp)) {
+        string qName = parseString(inp, " ", 1)[0];
+        if (!sameQName) {
+            qName = qName.substr(1, qName.size() - 3);
+        }
+
+        if (toexclude.find(qName) == toexclude.end()) {
+            for (int i = 0; i < 3; ++i) {
+                out << inp << endl;
+                getline(in, inp);
+            }
+            out << inp << endl;
+        } else {
+            for (int i = 0; i < 3; ++i) {
+                getline(in, inp);
+            }
+        }
+    }
+    
+    in.close();
+    exc.close();
+    out.close();
+    return true;
+}
+
 int main(int argc, char **argv) {
     if (argc == 1) {
         cout << "no zeroes:    z infile outfile" << endl;
@@ -1104,9 +1166,10 @@ int main(int argc, char **argv) {
         cout << "Timecourse:   b insam intsv inlog outtsv" << endl;
         cout << "Pull times:   u inlog" << endl;
         cout << "Unmapped cat  o unmappedin output sameQName genomebam" << endl;
-        cout << "All QNAMEs    p insam output sameqName" << endl;
+        cout << "All QNAMEs    p insam output sameQName" << endl;
         cout << "Pull chrom:   a insam outfile" << endl;
         cout << "Pull flag:    d insam outtsv" << endl;
+        cout << "Pull reads:   h infa exclude outfile sameQName" << endl;
         return 1;
     }
     char opt = argv[1][1];
@@ -1157,6 +1220,9 @@ int main(int argc, char **argv) {
         case 'a':   err = pullChroms(argv[2], argv[3]);
                     break;
         case 'd':   err = pullFlag(argv[2], argv[3]);
+                    break;
+        case 'h':   err = pullReadsNotIn(argv[2], argv[3], argv[4],
+                            argv[5][0] == '1');
                     break;
     }
     

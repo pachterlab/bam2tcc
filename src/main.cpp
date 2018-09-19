@@ -263,11 +263,11 @@ void usage() {
     << "RapMap \"lightweight\" SAM/BAMs. Required for BAM files." << endl
     << "  -t, --transcriptome <fa>  Change transcript indexing to match that "
     << "of these comma-separated transcriptome files. Use to directly compare "
-    << "output to that of kalisto pseudo. Not necessary for RapMap." << endl
+    << "output to that of kalisto pseudo. Not necessary for RapMap given that "
+    << "the RapMap index was built on the same transcriptome." << endl
     << "  -e <EC>                   Use the ECs in this file. Any additional "
     << "ECs will be appended." << endl
-    << "  -p <threads>              Number of threads to use. Currently not "
-    << "operational." << endl
+    << "  -p <threads>              Number of threads to use. " << endl
     << "  --full-matrix             Output full (not sparse) matrix." << endl
     << "  -u, --unmapped <SAM/BAM>  Output unmapped reads to files <SAM/BAM>."
     << " Must provide one for each input SAM/BAM file. CURRENTLY ONLY WORKS "

@@ -37,7 +37,7 @@ public:
             const std::vector<int> &EC);
     ~Read();
     void addAlignment(const seqan::BamAlignmentRecord &alignment,
-            const std::vector<int> &EC);
+            const std::vector<int> &EC, bool genomebam);
     bool isComplete();
     std::string getEC(bool genomebam=false);
 };
