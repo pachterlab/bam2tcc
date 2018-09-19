@@ -87,7 +87,6 @@ bool Read::isComplete() {
 string Read::getEC(bool genomebam) {
     vector<int> EC;
     for (auto p = pairs.begin(); p != pairs.end(); ++p) {
-        cout << p->EC1.size() << "\t" << p->EC2.size() << endl;
         if (paired && (!genomebam
                         || p->EC1.size() + p->EC2.size() != 0)) {
             sort(p->EC1.begin(), p->EC1.end());
@@ -104,7 +103,6 @@ string Read::getEC(bool genomebam) {
     }
     sort(EC.begin(), EC.end());
     EC.erase(unique(EC.begin(), EC.end()), EC.end());
-    cout << EC.size() << endl << endl;
     if (EC.size() == 0) { return ""; }
     string stringEC = to_string(EC[0]);
     for (int i = 1; i < EC.size(); ++i) {
