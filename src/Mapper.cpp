@@ -452,6 +452,7 @@ bool Mapper::getSameQName(int filenumber, bool &same) {
         seqan::readHeader(head, bam);
         seqan::BamAlignmentRecord rec;
         while (!seqan::atEnd(bam)) {
+            seqan::readRecord(rec, bam);
             string qName = seqan::toCString(rec.qName);
             if (qName.size() < 2) {
                 return true;;
