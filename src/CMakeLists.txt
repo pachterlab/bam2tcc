@@ -6,9 +6,9 @@ file(GLOB headers *.h *.hpp)
 list(REMOVE_ITEM sources main.cpp)
 list(REMOVE_ITEM sources debugUtil.cpp)
 
-add_library(llconv_core ${sources} ${headers})
+add_library(bam2tcc_core ${sources} ${headers})
 
-add_executable(llconv main.cpp)
+add_executable(bam2tcc main.cpp)
 add_executable(debug debugUtil.cpp)
 
 find_package(ZLIB)
@@ -20,5 +20,5 @@ add_definitions(${SEQAN_DEFINITIONS})
 find_package(Threads)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} ${SEQAN_CXX_FLAGS}")
-target_link_libraries(llconv llconv_core ${SEQAN_LIBRARIES} pthread)
-target_link_libraries(debug llconv_core ${SEQAN_LIBRARIES} pthread)
+target_link_libraries(bam2tcc bam2tcc_core ${SEQAN_LIBRARIES} pthread)
+target_link_libraries(debug bam2tcc_core ${SEQAN_LIBRARIES} pthread)
