@@ -753,8 +753,7 @@ bool Mapper::writeUnmapped(vector<string> &unmappedOut) {
         } else {
             seqan::BamFileIn in;
             if (!seqan::open(in, sams[i].c_str())) { return false; }
-            seqan::BamFileOut out;
-            if (!seqan::open(out, unmappedOut[i].c_str())) { return false; }
+            seqan::BamFileOut out(seqan::context(in), unmappedOut[i].c_str());
             if (!getSameQName(i, sameQName)) { return false; }
 
             seqan::BamHeader head;

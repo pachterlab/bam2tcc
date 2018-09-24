@@ -270,8 +270,7 @@ void usage() {
     << "  -p <threads>              Number of threads to use. " << endl
     << "  --full-matrix             Output full (not sparse) matrix." << endl
     << "  -u, --unmapped <SAM/BAM>  Output unmapped reads to files <SAM/BAM>."
-    << " Must provide one for each input SAM/BAM file. CURRENTLY ONLY WORKS "
-    << "WITH SAM FILES." << endl
+    << " Must provide one for each input SAM/BAM file." << endl
 #if READ_DIST
     << "  -m, --mapped <SAM/BAM>    Output mapped reads to files <SAM/BAM>. "
     << "Must provide one for each input SAM/BAM file." << endl

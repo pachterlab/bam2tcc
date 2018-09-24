@@ -1098,16 +1098,17 @@ bool pullFlag(string insam, string outtsv) {
     return true;
 }
 
-int pullReadsNotIn(string infa, string exclude, string outfile, bool sameQName)
+int pullReads(string infa, string reads, string outfile, bool sameQName,
+        bool includemode)
 {
     ifstream in(infa);
     if (!in.is_open()) {
         cerr << "Unable to open " << infa << endl;
         return false;
     }
-    ifstream exc(exclude);
-    if (!exc.is_open()) {
-        cerr << "Unable to open " << exclude << endl;
+    ifstream in2(reads);
+    if (!in2.is_open()) {
+        cerr << "Unable to open " << reads << endl;
         return false;
     }
     ofstream out(outfile);
@@ -1117,9 +1118,9 @@ int pullReadsNotIn(string infa, string exclude, string outfile, bool sameQName)
     }
     string inp;
 
-    unordered_set<string> toexclude;
-    while(getline(exc, inp)) {
-        toexclude.emplace(inp);
+    unordered_set<string> r;
+    while(getline(in2, inp)) {
+        r.emplace(inp);
     }
 
     while(getline(in, inp)) {
@@ -1128,7 +1129,7 @@ int pullReadsNotIn(string infa, string exclude, string outfile, bool sameQName)
             qName = qName.substr(1, qName.size() - 3);
         }
 
-        if (toexclude.find(qName) == toexclude.end()) {
+        if (includemode ^ (r.find(qName) == r.end())) {
             for (int i = 0; i < 3; ++i) {
                 out << inp << endl;
                 getline(in, inp);
@@ -1142,7 +1143,7 @@ int pullReadsNotIn(string infa, string exclude, string outfile, bool sameQName)
     }
     
     in.close();
-    exc.close();
+    in2.close();
     out.close();
     return true;
 }
@@ -1169,7 +1170,8 @@ int main(int argc, char **argv) {
         cout << "All QNAMEs    p insam output sameQName" << endl;
         cout << "Pull chrom:   a insam outfile" << endl;
         cout << "Pull flag:    d insam outtsv" << endl;
-        cout << "Pull reads:   h infa exclude outfile sameQName" << endl;
+        cout << "Pull reads:   h infa reads outfile sameQName includemode"
+            << endl;
         return 1;
     }
     char opt = argv[1][1];
@@ -1221,8 +1223,8 @@ int main(int argc, char **argv) {
                     break;
         case 'd':   err = pullFlag(argv[2], argv[3]);
                     break;
-        case 'h':   err = pullReadsNotIn(argv[2], argv[3], argv[4],
-                            argv[5][0] == '1');
+        case 'h':   err = pullReads(argv[2], argv[3], argv[4],
+                            argv[5][0] == '1', argv[6][0] == '1');
                     break;
     }
     
