@@ -1,4 +1,4 @@
-# Thing!
+# bam2tcc
 Code that takes the SAM/BAM files output by genome alignment programs and
 outputs TCC matrix like those output by [**kallisto**](https://pachterlab.github.io/kallisto/).
 So far has only been used/tested on Mac OS X and Linux.
@@ -15,15 +15,20 @@ SAM/BAM I/O. To download SeqAn, follow instructions
 ### Making the executable.
 Clone repository:
 ```
-    $ git clone https://github.com/laureneliu/tcc-from-alignment ~/clone/path
+    $ git clone https://github.com/laureneliu/bam2tcc ~/clone/path
 ```
 
-Change into the cloned directory `tcc-from-alignment` and run CMake (`cmake .`).
+Make a new directory called `build` and change into it:
+```
+    $ mkdir build && cd build
+```
+
+Run CMake (`cmake .`).
 Depending on where/how you installed SeqAn, you may need to append some extra
 options, `-DCMAKE_PREFIX_PATH and -DCMAKE_INCLUDE_PATH` so that CMake can find
 the relevant SeqAn folder. See [here](https://seqan.readthedocs.io/en/master/Infrastructure/Use/FindSeqAnCMake.html#install-seqan-into-user-defined-prefix-or-clone-from-github).
 
-The executable is `bin/thing`.
+The executable is `/path/bam2tcc/build/src/bam2tcc`.
 
 ## Running the program.
 ### Basic workflow.
@@ -39,7 +44,7 @@ matrix, contained in .ec, .tsv, and .cells files.
 
 ### Basic command line.
 ```
-Usage: ~/clone/path/bin/main [options]* -g <GFF> -S <SAM/BA> [-o <output>]
+Usage: /path/bam2tcc/build/src/bam2tcc [options]* -g <GFF> -S <SAM/BA> [-o <output>]
 ```
 
 `<GFF>` is the file of annotated sequences to use. Note that it must be in the
@@ -189,7 +194,7 @@ KeepPairs`. Consult the [manual](https://github.com/alexdobin/STAR/blob/master/d
 for more information about the available options.
 
 ## Various badly-document utilities.
-There exists another executable, `bin/debug`. It provides various useful
+There exists another executable, `/path/bam2tcc/build/src/debug`. It provides various useful
 functions, but does not go into detail on what they do. Also, any mistakes
 in input format of either the files or of the commandline arguments will result
 in a potentially generic error (e.g. a segfault). However, none of the functions
@@ -203,7 +208,7 @@ FILE into a sparse matrix
 
 * "Unmapped cat" (`-o`), which takes in an input
 SAM (not a BAM), presumably the file containing unmapped reads output by
-`bin/thing --unmapped`, and determines which reads were not properly aligned to
+`bam2tcc --unmapped`, and determines which reads were not properly aligned to
 the genome, and therefore did not map to any transcripts, and which reads did
 properly align somewhere in the genome, but in an area which did not correspond
 to any transcripts in the transcriptome. `sameQName` should be 1 if all segments
