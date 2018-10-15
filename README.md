@@ -5,12 +5,14 @@ So far has only been used/tested on Mac OS X and Linux.
 
 ## Installation.
 Binaries may eventually be provided. For now, they will have to be compiled from
-the source code.
+the source code. To compile `bam2tcc` you will need a c++14 compatible compiler such as gcc 5.0 or Clang 3.4 or later
 
 ### Dependencies.
 [CMake](https://cmake.org/) for compiling and [SeqAn](https://www.seqan.de/) for
 SAM/BAM I/O. To download SeqAn, follow instructions
 [here](http://seqan.readthedocs.io/en/master/Infrastructure/Use/Install.html).
+
+For compiling `bam2tcc` is is enough to download the [library package](http://packages.seqan.de/seqan-library/seqan-library-2.4.0.zip) and unzip to a directory.
 
 ### Making the executable.
 Clone repository:
@@ -23,12 +25,14 @@ Make a new directory called `build` and change into it:
     $ mkdir build && cd build
 ```
 
-Run CMake (`cmake .`).
+Run CMake (`cmake ..`) from the `build` directory. 
 Depending on where/how you installed SeqAn, you may need to append some extra
 options, `-DCMAKE_PREFIX_PATH and -DCMAKE_INCLUDE_PATH` so that CMake can find
-the relevant SeqAn folder. See [here](https://seqan.readthedocs.io/en/master/Infrastructure/Use/FindSeqAnCMake.html#install-seqan-into-user-defined-prefix-or-clone-from-github).
+the relevant SeqAn folder. See [here](https://seqan.readthedocs.io/en/master/Infrastructure/Use/FindSeqAnCMake.html#install-seqan-into-user-defined-prefix-or-clone-from-github). If you downloaded the SeqAn library it should be run with
 
-The executable is `/path/bam2tcc/build/src/bam2tcc`.
+`cmake -DCMAKE_PREFIX_PATH=download-path/seqan-library-2.4.0/share/cmake     -DSEQAN_INCLUDE_PATH=download-path/seqan-library-2.4.0/include ..``
+
+The executable is `build/src/bam2tcc`.
 
 ## Running the program.
 ### Basic workflow.
