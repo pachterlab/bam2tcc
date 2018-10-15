@@ -1,41 +1,42 @@
 # bam2tcc
-Code that takes the SAM/BAM files output by genome alignment programs and
-outputs TCC matrix like those output by [**kallisto**](https://pachterlab.github.io/kallisto/).
-So far has only been used/tested on Mac OS X and Linux.
+This utility converts genome alignments in SAM/BAM format to transcript compatibility counts (TCCs)
+as output by transcriptome pseudoalignment methods such as [**kallisto**](https://pachterlab.github.io/kallisto/).
+bam2tcc has been used/tested on Mac OS X and Linux.
 
-## Installation.
-Binaries may eventually be provided. For now, they will have to be compiled from
-the source code. To compile `bam2tcc` you will need a c++14 compatible compiler such as gcc 5.0 or Clang 3.4 or later
+## Installation
+Binaries may eventually be provided. For now, bam2tcc must be compiled from
+the source code. To compile `bam2tcc` you will need a c++14 compatible compiler such as gcc 5.0 or Clang 3.4 or later.
 
-### Dependencies.
+### Dependencies
 [CMake](https://cmake.org/) for compiling and [SeqAn](https://www.seqan.de/) for
 SAM/BAM I/O. To download SeqAn, follow instructions
 [here](http://seqan.readthedocs.io/en/master/Infrastructure/Use/Install.html).
 
-For compiling `bam2tcc` is is enough to download the [library package](http://packages.seqan.de/seqan-library/seqan-library-2.4.0.zip) and unzip to a directory.
+For compiling `bam2tcc`, it is enough to download the [library package](http://packages.seqan.de/seqan-library/seqan-library-2.4.0.zip) and unzip to a directory.
 
-### Making the executable.
-Clone repository:
+### Making the executable
+First clone the repository:
 ```
     $ git clone https://github.com/laureneliu/bam2tcc ~/clone/path
 ```
 
-Make a new directory called `build` and change into it:
+Next create a directory called `build` and change directory into it:
 ```
     $ mkdir build && cd build
 ```
 
-Run CMake (`cmake ..`) from the `build` directory. 
+Run CMake (`cmake ..`) from the `build` directory followed by `make`.
+
+The resulting executable is `build/src/bam2tcc`.
+
 Depending on where/how you installed SeqAn, you may need to append some extra
 options, `-DCMAKE_PREFIX_PATH and -DCMAKE_INCLUDE_PATH` so that CMake can find
 the relevant SeqAn folder. See [here](https://seqan.readthedocs.io/en/master/Infrastructure/Use/FindSeqAnCMake.html#install-seqan-into-user-defined-prefix-or-clone-from-github). If you downloaded the SeqAn library it should be run with
 
 ```cmake -DCMAKE_PREFIX_PATH=download-path/seqan-library-2.4.0/share/cmake     -DSEQAN_INCLUDE_PATH=download-path/seqan-library-2.4.0/include ..```
 
-The executable is `build/src/bam2tcc`.
-
-## Running the program.
-### Basic workflow.
+## Running the program
+### Basic workflow
 Given a set of RNA-seq reads contained in some FASTQ files:
 1. Use a genome alignment program such as [HISAT2](https://ccb.jhu.edu/software/hisat2/manual.shtml)
 or [STAR](https://github.com/alexdobin/STAR/) to align the reads. Your output
@@ -46,7 +47,7 @@ command is `samtools sort -T [tempPrefix] -@ [nthreads] -o [outfile] infile`.
 1. Use this program to read the SAM/BAM file and output the appropriate TCC
 matrix, contained in .ec, .tsv, and .cells files.
 
-### Basic command line.
+### Basic command line
 ```
 Usage: /path/bam2tcc/build/src/bam2tcc [options]* -g <GFF> -S <SAM/BA> [-o <output>]
 ```
@@ -74,9 +75,9 @@ extensions will be added to the name your provide. Default is matrix.ec,
 matrix.tsv, and matrix.cells. See below for brief description of what these
 files look like.
 
-### Other options.
+### Other options
 * **-U** Indicate that the reads are unpaired. Only necessary for running on
-kallisto --genomebam output.i
+kallisto --genomebam output.
 
 * **-k** Indicate that all input SAM/BAM files are kallisto genomebam files.
 Required if input file is in the BAM format, or if it does not specify the
@@ -107,7 +108,7 @@ anywhere on the genome. Currently outputs a bad header.
 
 * **--check-gff** Only check GFF format.
 
-### Alternative compilation options.
+### Alternative compilation options
 There exists a preprocessor macro, READ_DIST, that gives the option to output
 the names of those reads that map to some transcript (i.e., whose TCCs are
 nonempty). The macros is in Mapper.hpp in the src folder.
@@ -116,14 +117,14 @@ possible to determine on which reads kallisto and genomic aligners differ.
 In the kallisto-generated file, all reads where at least one alignment does not
 have the "unmapped flag" (0x04) are considered to have mapped.
 
-## File formats.
+## File formats
 This section will only describe the ec, tsv, and cell files and add some
 restrictions to SAM/BAM formatting. For more information on
 the [GFF](https://uswest.ensembl.org/info/website/upload/gff.html)
  and [SAM/BAM](https://samtools.github.io/hts-specs/SAMv1.pdf)
 file formats, you should look at their documentation.
 
-### .ec files.
+### .ec files
 This file contains two tab-separated columns. The first column is the
 zero-indexed row number (the line number). The second contains the equivalence
 class. From [the paper on kallisto](https://www.nature.com/articles/nbt.3519):
@@ -132,11 +133,11 @@ class. From [the paper on kallisto](https://www.nature.com/articles/nbt.3519):
 > the read; ideally it represents the transcripts a read could have originated
 > from and provides a sufficient statistic for quantification.
 
-### .cells files.
+### .cells files
 This is a list of the SAM/BAM files used. They will be listed in the order that
 they were input.
 
-### .tsv files.
+### .tsv files
 This file may be in either the sparse matrix format (default) or full matrix
 format. You may change the output format using the `--full-matrix`` option.
 
@@ -164,7 +165,7 @@ Then, three reads in the first SAM/BAM file aligned to equivalence class 1,3.
 
 Note that you can look at the .cells file to see which SAM/BAM file this was.
 
-#### Sparse matrix.
+#### Sparse matrix
 This file contains three tab-separated columns. Take a full matrix. The first
 column of this file gives the zero-indexed row number of an entry. The second
 gives the -1-indexed column number (i.e. it one-indexes, but does not count the
@@ -186,7 +187,7 @@ The sparse matrix looks like this:
 2   3   1
 ```
 
-### SAM/BAM restrictions.
+### SAM/BAM restrictions
 For paired-end reads, the program will only count as "correct" a pair of
 alignments  with flags: 0x01, 0x02, 0x10 for one alignment and 0x20 for the
 other, and 0x40 for one alignment and 0x80 for the other.
@@ -197,7 +198,7 @@ program, but STAR requires the additional option `--outSAMunmapped Within
 KeepPairs`. Consult the [manual](https://github.com/alexdobin/STAR/blob/master/doc/STARmanual.pdf)
 for more information about the available options.
 
-## Various poorly-document utilities.
+## Various poorly-document utilities
 There exists another executable, `/path/bam2tcc/build/src/debug`. It provides various useful
 functions, but does not go into detail on what they do. Also, any mistakes
 in input format of either the files or of the commandline arguments will result
@@ -222,4 +223,4 @@ second mate). `genomebam` should be 1 if the input SAM alignments were
 originally generated by kallisto --genomebam.
 
 * "EQ to TCC" (`-t`), which takes as input the eq_classes.txt file generated by
-Salmon --dumpEQ and outputs a TCC in kallisto's format.
+Salmon --dumpEQ and outputs TCCs in kallisto's format.
