@@ -30,7 +30,7 @@ Depending on where/how you installed SeqAn, you may need to append some extra
 options, `-DCMAKE_PREFIX_PATH and -DCMAKE_INCLUDE_PATH` so that CMake can find
 the relevant SeqAn folder. See [here](https://seqan.readthedocs.io/en/master/Infrastructure/Use/FindSeqAnCMake.html#install-seqan-into-user-defined-prefix-or-clone-from-github). If you downloaded the SeqAn library it should be run with
 
-`cmake -DCMAKE_PREFIX_PATH=download-path/seqan-library-2.4.0/share/cmake     -DSEQAN_INCLUDE_PATH=download-path/seqan-library-2.4.0/include ..``
+```cmake -DCMAKE_PREFIX_PATH=download-path/seqan-library-2.4.0/share/cmake     -DSEQAN_INCLUDE_PATH=download-path/seqan-library-2.4.0/include ..```
 
 The executable is `build/src/bam2tcc`.
 
@@ -197,7 +197,7 @@ program, but STAR requires the additional option `--outSAMunmapped Within
 KeepPairs`. Consult the [manual](https://github.com/alexdobin/STAR/blob/master/doc/STARmanual.pdf)
 for more information about the available options.
 
-## Various badly-document utilities.
+## Various poorly-document utilities.
 There exists another executable, `/path/bam2tcc/build/src/debug`. It provides various useful
 functions, but does not go into detail on what they do. Also, any mistakes
 in input format of either the files or of the commandline arguments will result
