@@ -41,10 +41,10 @@ Given a set of RNA-seq reads contained in some FASTQ files:
 1. Use a genome alignment program such as [HISAT2](https://ccb.jhu.edu/software/hisat2/manual.shtml)
 or [STAR](https://github.com/alexdobin/STAR/) to align the reads. Your output
 should be a SAM or BAM file.
-1. Use samtools to order the output by genomic coordinate if necessary. The
+2. Use samtools to order the output by genomic coordinate if necessary. The
 command is `samtools sort -T [tempPrefix] -@ [nthreads] -o [outfile] infile`.
 [Here](http://www.htslib.org/doc/samtools.html) for more information.
-1. Use this program to read the SAM/BAM file and output the appropriate TCC
+3. Use this program to read the SAM/BAM file and output the appropriate TCC
 matrix, contained in .ec, .tsv, and .cells files.
 
 ### Basic command line
@@ -53,22 +53,22 @@ Usage: /path/bam2tcc/build/src/bam2tcc [options]* -g <GFF> -S <SAM/BA> [-o <outp
 ```
 
 `<GFF>` is the file of annotated sequences to use. Note that it must be in the
-[ensembl GFF format](https://uswest.ensembl.org/info/website/upload/gff.html) or
-it cannot be read properly. If there are multiple GFFs you wish to use, you may
+[Ensembl GFF format](https://uswest.ensembl.org/info/website/upload/gff.html) or
+it cannot be properly parsed. If there are multiple GFFs you wish to use, you may
 input them as a comma-separated list of values. Entries should be grouped by
 chromosome, then by transcript. The entry of type "transcript" must come before
 the entries of type "exon" for one given transcript. Exons should be in order of
 increasing genomic start coordinate if the transcript is on the forward strand,
 and in order of decreasing genomic start coordinate if the transcript is on the
 reverse strand. The program will check the GFF for this format before using it.
-GFFs downloaded from ensembl should be in the correct format.
+GFFs downloaded from Ensembl should be in the correct format.
 
-`<SAM/BAM>` is the SAM/BAM file output by the genome aligner. Again, it must be in
+`<SAM/BAM>` is the SAM/BAM file output by the genome aligner. It must be in
 the [specified format](https://samtools.github.io/hts-specs/SAMv1.pdf). Either
 of the two example aligners listed above (HISAT2, STAR) should give a
 correctly-formated file. As with the GTFs, this option accepts a comma-separated
 list of values. Alignments should be sorted by chromosome, then by genomic start
-coordinate. samtools provides a way to sort alignments in this way.
+coordinate. Samtools provides a way to sort alignments in this way.
 
 `<output>` is the name/directory of your output files. Appropriate file
 extensions will be added to the name your provide. Default is matrix.ec,
@@ -92,7 +92,7 @@ kallisto. kallisto's output zero-indexes the transcripts. Using this option will
 give the output the same indexing. If there are more transcripts in the GTF than
 in the transcriptome, the program will continue where kallisto leaves off.
 
-* **-e, --ec <ec>** A kallisto (or other) ec file. Order the TCCs in the same
+* **-e, --ec <ec>** A kallisto (or other) equivalence class (ec) file. Order the TCCs in the same
 order as this ec file. Useful for direct comparison of program output with
 kallisto pseudo output. However, it might be more useful to look at kallisto
 quant output.
